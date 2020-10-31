@@ -73,19 +73,16 @@
     (case kind
       :class
       (-> args first Class/forName)
-
       :construct
       (.newInstance
        (.getConstructor
         (-> args first Class/forName)
         (->> args rest (map type) (into-array Class)))
        (into-array Object (rest args)))
-
       :invoke-static-method
       (let [[class-name method-name & args] args
             method (->> args (map type) (into-array Class) (.getMethod (Class/forName class-name) method-name))]
         (.invoke method nil (into-array Object args)))
-
       :invoke-instance-method
       (let [[instance method-name & args] args
             method (->> args (map type) (into-array Class) (.getMethod (class instance) method-name))]
@@ -93,10 +90,23 @@
 
       (throw (ex-info "unknown exp type" {:exp exp})))))
 
-(let [[kind & args] 3]
-  [kind args])
-
 (comment
+  (defn ppreflect
+    "Pretty print a table describing all public members of the given object"
+    [obj]
+    (->> (reflect/reflect obj)
+         :members
+         (filter #(-> % :flags :public))
+         (map #(assoc %
+                      :kind (-> % type .getSimpleName)
+                      :arity (count (:parameter-types %))))
+         (filter #(= (:kind %) "Constructor"))
+         (sort-by (juxt :kind :name))
+         (pprint/print-table [:kind :name :arity :parameter-types :return-type :flags])))
+
+  
+  Long/MAX_VALUE
+  (.getField Long "MAX_VALUE")
   (type-check "abc")
   (type-check 123)
   (type-check [:class "java.lang.Long"])
