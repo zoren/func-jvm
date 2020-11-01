@@ -16,6 +16,12 @@
     (catch java.lang.ClassNotFoundException e
       (throw (ex-info "class not found" {:class-name class-name :ex e})))))
 
+(defn check-constructor [class-obj parameter-types]
+  (try
+    (.getConstructor class-obj (into-array Class parameter-types))
+    (catch java.lang.NoSuchMethodException e
+      (throw (ex-info "constructor not found" {:ex e})))))
+
 (defn check-method [class-obj method-name parameter-types]
   (try
     (.getMethod class-obj method-name (into-array Class parameter-types))
@@ -41,13 +47,10 @@
           (check-class (first args))
           Class)
         :construct
-        (let [c (check-class (first args))
-              args (map type-check (rest args))]
-          (try
-            (.getConstructor c (into-array Class args))
-            c
-            (catch java.lang.NoSuchMethodException e
-              (throw (ex-info "constructor not found" {:exp exp :args args :ex e})))))
+        (let [[class-name & args] args
+              c (check-class class-name)]
+          (check-constructor c (map type-check args))
+          c)
         :invoke-static-method
         (let [[class-name method-name & args] args
               method (check-method (check-class class-name) method-name (map type-check args))]
@@ -75,39 +78,40 @@
 
         (throw (ex-info "unknown exp type" {:exp exp}))))))
 
-(defn eval-exp [[kind & args :as exp]]
+(defn eval-exp [exp]
   (if (type-constant exp)
     exp
-    (case kind
-      :class
-      (-> args first Class/forName)
-      :construct
-      (.newInstance
-       (.getConstructor
+    (let [[kind & args] exp]
+      (case kind
+        :class
         (-> args first Class/forName)
-        (->> args rest (map type) (into-array Class)))
-       (into-array Object (rest args)))
-      :invoke-static-method
-      (let [[class-name method-name & args] args
-            method (->> args (map type) (into-array Class) (.getMethod (Class/forName class-name) method-name))]
-        (.invoke method nil (into-array Object args)))
-      :invoke-instance-method
-      (let [[instance-exp method-name & args] args
-            instance (eval-exp instance-exp)
-            method (->> args (map type) (into-array Class) (.getMethod (class instance) method-name))]
-        (.invoke method instance (into-array Object args)))
-      :get-static-field
-      (let [[class-name field-name] args
-            c (Class/forName class-name)
-            field (check-field c field-name)]
-        (.get field c))
-      :get-instance-field
-      (let [[instance-exp field-name] args
-            instance (eval-exp instance-exp)
-            field (check-field (class instance) field-name)]
-        (.get field instance))
+        :construct
+        (.newInstance
+         (.getConstructor
+          (-> args first Class/forName)
+          (->> args rest (map type) (into-array Class)))
+         (into-array Object (rest args)))
+        :invoke-static-method
+        (let [[class-name method-name & args] args
+              method (->> args (map type) (into-array Class) (.getMethod (Class/forName class-name) method-name))]
+          (.invoke method nil (into-array Object args)))
+        :invoke-instance-method
+        (let [[instance-exp method-name & args] args
+              instance (eval-exp instance-exp)
+              method (->> args (map type) (into-array Class) (.getMethod (class instance) method-name))]
+          (.invoke method instance (into-array Object args)))
+        :get-static-field
+        (let [[class-name field-name] args
+              c (Class/forName class-name)
+              field (check-field c field-name)]
+          (.get field c))
+        :get-instance-field
+        (let [[instance-exp field-name] args
+              instance (eval-exp instance-exp)
+              field (check-field (class instance) field-name)]
+          (.get field instance))
 
-      (throw (ex-info "unknown exp type" {:exp exp})))))
+        (throw (ex-info "unknown exp type" {:exp exp}))))))
 
 (comment
   (defn ppreflect
@@ -122,27 +126,4 @@
                                         ;      (filter #(= (:kind %) "Constructor"))
          (sort-by (juxt :kind :name))
          (pprint/print-table [:kind :name :arity :parameter-types :return-type :flags])))
-
-  (type-check "abc")
-  (type-check 123)
-  (type-check [:class "java.lang.Long"])
-  (type-check [:class "NoSuchClass"])
-  (type-check [:construct "java.lang.Object"])
-  (type-check [:construct "java.lang.Long" "23"])
-  (type-check [:construct "java.lang.Long" 34])
-  (eval-exp [:construct "java.lang.Long" "23"])
-
-  (type-check [:construct "java.math.BigDecimal" "23"])
-  (eval-exp [:construct "java.lang.Long" 34])
-  (type-check [:invoke-static-method "java.lang.Long" "getLong" "java.specification.version" 34])
-  (eval-exp [:invoke-static-method "java.lang.Long" "getLong" "java.specification.version" 34])
-
-  (type-check [:invoke-instance-method 12 "toString"])
-  (eval-exp [:invoke-instance-method 12 "toString"])
-  (eval-exp [:invoke-instance-method [:construct "experimentation.java.PublicInstanceField"] "plus"])
-
-  (type-check [:class "java.time.Month"])
-  (type-check [:get-static-field "java.time.Month" "JULY"])
-  (eval-exp [:get-static-field "java.time.Month" "JULY"])
-  (eval-exp [:get-instance-field [:construct "experimentation.java.PublicInstanceField"] "x"])
   )
