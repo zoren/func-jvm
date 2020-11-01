@@ -1,0 +1,4 @@
+{:deps
+ {experimentation.java/experimentation.java
+  {:local/root "java/experimentation.jar"}}
+ }
