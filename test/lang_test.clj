@@ -48,3 +48,24 @@
   (is (= 5
          (eval-exp [:get-instance-field [:construct "experimentation.java.PublicInstanceField"] "x"])))
   )
+
+(deftest preservation-test
+  (let [pres (fn [exp t]
+               (is (= t (type-check exp)))
+               (is (= t (class (eval-exp exp)))))]
+    (pres "abc" String)
+    (pres 123 Long)
+
+    (pres [:class "java.lang.Long"] Class)
+
+    (pres [:construct "java.lang.Object"] Object)
+    (pres [:construct "java.lang.Long" "123"] Long)
+    (pres [:construct "java.math.BigDecimal" "123"] BigDecimal)
+
+    (pres [:invoke-static-method "java.lang.Long" "getLong" "java.specification.version" 34] Long)
+
+    (pres [:invoke-instance-method 12 "toString"] String)
+
+    (pres [:get-static-field "java.time.Month" "JULY"] java.time.Month)
+
+    (pres [:get-instance-field [:construct "experimentation.java.PublicInstanceField"] "x"] Long)))
