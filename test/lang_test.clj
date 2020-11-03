@@ -6,20 +6,21 @@
   )
 
 (deftest type-check-test
-  (is (= String (type-check "abc")))
-  (is (= Long (type-check 123)))
+  (is (= String (type-check [:constant "abc"])))
+  (is (= Long (type-check [:constant 123])))
 
   (is (thrown? clojure.lang.ExceptionInfo (type-check [:class "NoSuchClass"])))
   (is (= Class (type-check [:class "java.lang.Long"])))
 
-  (is (thrown? clojure.lang.ExceptionInfo (type-check [:construct "java.lang.Long" 34])))
+  (is (thrown? clojure.lang.ExceptionInfo (type-check [:construct "java.lang.Long" [:constant 34]])))
   (is (= Object (type-check [:construct "java.lang.Object"])))
-  (is (= Long (type-check [:construct "java.lang.Long" "23"])))
-  (is (= BigDecimal (type-check [:construct "java.math.BigDecimal" "23"])))
+  (is (= Long (type-check [:construct "java.lang.Long" [:constant "23"]])))
+  (is (= BigDecimal (type-check [:construct "java.math.BigDecimal" [:constant "23"]])))
 
-  (is (= Long (type-check [:invoke-static-method "java.lang.Long" "getLong" "java.specification.version" 34])))
+  (is (= Long (type-check [:invoke-static-method "java.lang.Long" "getLong" [:constant "java.specification.version"]
+                           [:constant 34]])))
 
-  (is (= String (type-check [:invoke-instance-method 12 "toString"])))
+  (is (= String (type-check [:invoke-instance-method [:constant 12] "toString"])))
 
   (is (= java.time.Month (type-check [:get-static-field "java.time.Month" "JULY"])))
 
@@ -28,19 +29,20 @@
   )
 
 (deftest eval-exp-test
-  (is (= "abc" (eval-exp "abc")))
-  (is (= 123 (eval-exp 123)))
+  (is (= "abc" (eval-exp [:constant "abc"])))
+  (is (= 123 (eval-exp [:constant 123])))
 
   (is (= Long (eval-exp [:class "java.lang.Long"])))
 
   (is (= Object (type (eval-exp [:construct "java.lang.Object"]))))
-  (is (= "abc" (eval-exp [:construct "java.lang.String" "abc"])))
-  (is (= 123 (eval-exp [:construct "java.lang.Long" "123"])))
+  (is (= "abc" (eval-exp [:construct "java.lang.String" [:constant "abc"]])))
+  (is (= 123 (eval-exp [:construct "java.lang.Long" [:constant "123"]])))
 
   (is (= 14
-         (eval-exp [:invoke-static-method "java.lang.Long" "getLong" "java.specification.version" 34])))
+         (eval-exp [:invoke-static-method "java.lang.Long" "getLong" [:constant "java.specification.version"]
+                    [:constant 34]])))
 
-  (is (= "123" (eval-exp [:invoke-instance-method 123 "toString"])))
+  (is (= "123" (eval-exp [:invoke-instance-method [:constant 123] "toString"])))
   (is (= 6 (eval-exp [:invoke-instance-method [:construct "experimentation.java.PublicInstanceField"] "plus"])))
 
   (is (= java.time.Month/JULY (eval-exp [:get-static-field "java.time.Month" "JULY"])))
@@ -53,18 +55,18 @@
   (let [pres (fn [exp t]
                (is (= t (type-check exp)))
                (is (= t (class (eval-exp exp)))))]
-    (pres "abc" String)
-    (pres 123 Long)
+    (pres [:constant "abc"] String)
+    (pres [:constant 123] Long)
 
     (pres [:class "java.lang.Long"] Class)
 
     (pres [:construct "java.lang.Object"] Object)
-    (pres [:construct "java.lang.Long" "123"] Long)
-    (pres [:construct "java.math.BigDecimal" "123"] BigDecimal)
+    (pres [:construct "java.lang.Long" [:constant "123"]] Long)
+    (pres [:construct "java.math.BigDecimal" [:constant "123"]] BigDecimal)
 
-    (pres [:invoke-static-method "java.lang.Long" "getLong" "java.specification.version" 34] Long)
+    (pres [:invoke-static-method "java.lang.Long" "getLong" [:constant "java.specification.version"] [:constant 34]] Long)
 
-    (pres [:invoke-instance-method 12 "toString"] String)
+    (pres [:invoke-instance-method [:constant 12] "toString"] String)
 
     (pres [:get-static-field "java.time.Month" "JULY"] java.time.Month)
 
