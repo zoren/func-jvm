@@ -78,6 +78,52 @@
 
       (throw (ex-info "unknown exp type" {:exp exp})))))
 
+(defn annotate [[kind & args :as exp]]
+  (case kind
+    :constant
+    (with-meta exp {:type (-> args first type-constant)})
+    :class
+    (with-meta exp {:type Class :class (check-class (first args))})
+    :get-static-field
+    (let [[class-name field-name] args
+          class-obj (check-class class-name)
+          field (check-field class-obj field-name)]
+      (when-not (static? field)
+        (throw (ex-info "field not static" {:exp exp})))
+      (with-meta exp {:type (.getType field) :class class-obj :field field}))
+    :get-instance-field
+    (let [[instance-exp field-name] args
+          annotated-instance (annotate instance-exp)
+          field (check-field (-> annotated-instance meta :type) field-name)]
+      (when (static? field)
+        (throw (ex-info "field not instance" {:exp exp})))
+      (with-meta [:get-instance-field annotated-instance field-name] {:type (.getType field) :field field}))
+    :construct
+    (let [[class-name & args] args
+          c (check-class class-name)
+          annotated-args (map annotate args)
+          ctor (check-constructor c (map (fn [a] (-> a meta :type)) annotated-args))]
+      (with-meta (into [:construct class-name] annotated-args) {:type c :ctor ctor}))
+    :invoke-static-method
+    (let [[class-name method-name & args] args
+          annotated-args (map annotate args)
+          method (check-method (check-class class-name) method-name (map (fn [a] (-> a meta :type)) annotated-args))]
+      (when-not (static? method)
+        (throw (ex-info "method not static" {:exp exp})))
+      (with-meta (into [:invoke-static-method class-name method-name] annotated-args)
+        {:type (.getReturnType method) :method method}))
+    :invoke-instance-method
+    (let [[instance-exp method-name & args] args
+          annotated-instance (annotate instance-exp)
+          annotated-args (map annotate args)
+          method (check-method (-> annotated-instance meta :type) method-name (map (fn [a] (-> a meta :type)) annotated-args))]
+      (when (static? method)
+        (throw (ex-info "method not instance" {:exp exp})))
+      (with-meta (into [:invoke-instance-method annotated-instance method-name] annotated-args)
+        {:type (.getReturnType method) :method method}))
+
+    (throw (ex-info "unknown exp type" {:exp exp}))))
+
 (defn eval-exp [exp]
   (let [[kind & args] exp]
     (case kind

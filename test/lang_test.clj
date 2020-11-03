@@ -1,7 +1,7 @@
 (ns lang-test
   (:require
    [clojure.test :refer [deftest is]]
-   [lang :refer [type-check eval-exp]]
+   [lang :refer [type-check annotate eval-exp]]
    )
   )
 
@@ -27,6 +27,28 @@
   (is (= Long
          (type-check [:get-instance-field [:construct "experimentation.java.PublicInstanceField"] "x"])))
   )
+
+(deftest annotate-test
+  (let [t (fn [e] (-> e annotate meta :type))]
+    (is (= String (t [:constant "abc"])))
+    (is (= Long (t [:constant 123])))
+
+    (is (thrown? clojure.lang.ExceptionInfo (t [:class "NoSuchClass"])))
+    (is (= Class (t [:class "java.lang.Long"])))
+
+    (is (thrown? clojure.lang.ExceptionInfo (t [:construct "java.lang.Long" [:constant 34]])))
+    (is (= Object (t [:construct "java.lang.Object"])))
+    (is (= Long (t [:construct "java.lang.Long" [:constant "23"]])))
+    (is (= BigDecimal (t [:construct "java.math.BigDecimal" [:constant "23"]])))
+
+    (is (= Long (t [:invoke-static-method "java.lang.Long" "getLong" [:constant "java.specification.version"]
+                    [:constant 34]])))
+
+    (is (= String (t [:invoke-instance-method [:constant 12] "toString"])))
+
+    (is (= java.time.Month (t [:get-static-field "java.time.Month" "JULY"])))
+
+    (is (= Long (t [:get-instance-field [:construct "experimentation.java.PublicInstanceField"] "x"])))))
 
 (deftest eval-exp-test
   (is (= "abc" (eval-exp [:constant "abc"])))
