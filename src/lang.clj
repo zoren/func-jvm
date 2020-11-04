@@ -58,7 +58,7 @@
   ([exp t] (with-type exp t nil))
   ([exp t additionals] (with-meta exp (merge {:type (wrap-primitive-types t)} additionals))))
 
-(defn annotate-exp [[kind & args :as exp]]
+(defn annotate-exp [symbol-table [kind & args :as exp]]
   (case kind
     :constant
     (with-type exp (-> args first type))
@@ -73,7 +73,7 @@
       (with-type exp (.getType field) {:class class-obj :field field}))
     :get-instance-field
     (let [[instance-exp field-name] args
-          annotated-instance (annotate-exp instance-exp)
+          annotated-instance (annotate-exp symbol-table instance-exp)
           field (check-field (annotated-type annotated-instance) field-name)]
       (when (static? field)
         (throw (ex-info "field not instance" {:exp exp})))
@@ -81,12 +81,12 @@
     :construct
     (let [[class-name & args] args
           c (check-class class-name)
-          annotated-args (map annotate-exp args)
+          annotated-args (map (partial annotate-exp symbol-table) args)
           ctor (check-constructor c (map annotated-type annotated-args))]
       (with-type (into [kind class-name] annotated-args) c {:ctor ctor}))
     :invoke-static-method
     (let [[class-name method-name & args] args
-          annotated-args (map annotate-exp args)
+          annotated-args (map (partial annotate-exp symbol-table) args)
           method (check-method (check-class class-name) method-name (map annotated-type annotated-args))]
       (when-not (static? method)
         (throw (ex-info "method not static" {:exp exp})))
@@ -94,8 +94,8 @@
         (.getReturnType method) {:method method}))
     :invoke-instance-method
     (let [[instance-exp method-name & args] args
-          annotated-instance (annotate-exp instance-exp)
-          annotated-args (map annotate-exp args)
+          annotated-instance (annotate-exp symbol-table instance-exp)
+          annotated-args (map (partial annotate-exp symbol-table) args)
           method (check-method (annotated-type annotated-instance) method-name (map annotated-type annotated-args))]
       (when (static? method)
         (throw (ex-info "method not instance" {:exp exp})))
@@ -103,17 +103,19 @@
         (.getReturnType method) {:method method}))
 
     :if
-    (let [[an-cond an-true an-false] (map annotate-exp args)]
+    (let [[an-cond an-true an-false] (map (partial annotate-exp symbol-table) args)]
       (when-not (= Boolean (annotated-type an-cond))
         (throw (ex-info "condition was not boolean" {:exp exp})))
       (when-not (= (annotated-type an-true) (annotated-type an-false))
         (throw (ex-info "if branches where different type"
                         {:exp exp :t-true (annotated-type an-true) :t-false (annotated-type an-false)})))
       (with-type [:if an-cond an-true an-false] (annotated-type an-true)))
+    :var
+    (with-type exp (symbol-table (first args)))
 
     (throw (ex-info "unknown exp type" {:exp exp}))))
 
-(defn eval-annotated-exp [[kind & args :as exp]]
+(defn eval-annotated-exp [env [kind & args :as exp]]
   (case kind
     :constant
     (first args)
@@ -125,27 +127,28 @@
       (.get field class-obj))
     :get-instance-field
     (let [[instance-exp _field-name] args
-          instance (eval-annotated-exp instance-exp)
+          instance (eval-annotated-exp env instance-exp)
           field (-> exp meta :field)]
       (.get field instance))
     :construct
     (let [ctor (-> exp meta :ctor)]
       (.newInstance
        ctor
-       (into-array Object (map eval-annotated-exp (rest args)))))
+       (into-array Object (map (partial eval-annotated-exp env) (rest args)))))
     :invoke-static-method
     (let [[_class-name _method-name & args] args
           method (-> exp meta :method)]
-      (.invoke method nil (into-array Object (map eval-annotated-exp args))))
+      (.invoke method nil (into-array Object (map (partial eval-annotated-exp env) args))))
     :invoke-instance-method
     (let [[instance-exp _method-name & args] args
-          instance (eval-annotated-exp instance-exp)
+          instance (eval-annotated-exp env instance-exp)
           method (-> exp meta :method)]
       (.invoke method instance (into-array Object args)))
 
     :if
     (let [[cond t f] args]
-      (if (eval-annotated-exp cond) (eval-annotated-exp t) (eval-annotated-exp f)))
+      (if (eval-annotated-exp env cond) (eval-annotated-exp env t) (eval-annotated-exp env f)))
+    :var
+    (-> args first env)
 
     (throw (ex-info "unknown exp type" {:exp exp}))))
-

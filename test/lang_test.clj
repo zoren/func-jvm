@@ -1,12 +1,14 @@
 (ns lang-test
   (:require
    [clojure.test :refer [deftest is]]
-   [lang :refer [annotate-exp eval-annotated-exp]]
+   [lang :refer [annotate-exp eval-annotated-exp annotated-type]]
    )
   )
 
 (deftest annotate-test
-  (let [t (fn [e] (-> e annotate-exp meta :type))]
+  (let [t (fn t
+            ([e] (t {} e))
+            ([st e] (:type (meta (annotate-exp st e)))))]
     (is (= Boolean (t [:constant false])))
     (is (= Boolean (t [:constant true])))
     (is (= String (t [:constant "abc"])))
@@ -34,10 +36,13 @@
 
     (is (thrown? clojure.lang.ExceptionInfo (t [:if [:constant "not bool"] [:constant 3] [:constant 5]])))
     (is (thrown? clojure.lang.ExceptionInfo (t [:if [:constant true] [:constant 3] [:constant "not same type as 3"]])))
-    (is (= Long (t [:if [:constant true] [:constant 3] [:constant 5]])))))
+    (is (= Long (t [:if [:constant true] [:constant 3] [:constant 5]])))
+    (is (= String (t {:x String} [:var :x])))))
 
 (deftest eval-annotated-exp-test
-  (let [eval-exp (fn [exp] (eval-annotated-exp (annotate-exp exp)))]
+  (let [eval-exp (fn eval-exp
+                   ([exp] (eval-exp {} exp))
+                   ([env exp] (eval-annotated-exp env (annotate-exp {} exp))))]
     (is (= "abc" (eval-exp [:constant "abc"])))
     (is (= 123 (eval-exp [:constant 123])))
 
@@ -58,13 +63,20 @@
            (eval-exp [:get-instance-field [:construct "experimentation.java.PublicInstanceField"] "x"])))
 
     (is (= 3 (eval-exp [:if [:constant true] [:constant 3] [:constant 5]])))
-    (is (= 5 (eval-exp [:if [:constant false] [:constant 3] [:constant 5]])))))
+    (is (= 5 (eval-exp [:if [:constant false] [:constant 3] [:constant 5]])))
+
+    (is (= "abc" (eval-exp {:x "abc"} [:var :x])))))
 
 (deftest preservation-test
-  (let [pres (fn [exp t]
-               (let [annotated-exp (annotate-exp exp)]
-                 (is (= t (-> annotated-exp meta :type)))
-                 (is (= t (class (eval-annotated-exp annotated-exp))))))]
+  (let [pres (fn pres
+               ([exp t]
+                (pres {} exp t))
+               ([st-env exp t]
+                (let [annotated-exp (annotate-exp
+                                     (into {} (map (fn [[variable [t _value]]] [variable t]) st-env)) exp)]
+                  (is (= t (annotated-type annotated-exp)))
+                  (is (= t (class (eval-annotated-exp
+                                   (into {} (map (fn [[variable [_t value]]] [variable value]) st-env)) annotated-exp)))))))]
     (pres [:constant "abc"] String)
     (pres [:constant 123] Long)
 
@@ -80,4 +92,6 @@
 
     (pres [:get-static-field "java.time.Month" "JULY"] java.time.Month)
 
-    (pres [:get-instance-field [:construct "experimentation.java.PublicInstanceField"] "x"] Long)))
+    (pres [:get-instance-field [:construct "experimentation.java.PublicInstanceField"] "x"] Long)
+
+    (pres {:x [Long 42]} [:var :x] Long)))
