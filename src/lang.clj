@@ -1,10 +1,5 @@
 (ns lang)
 
-(def constant-types #{String Long Boolean})
-
-(defn type-constant [exp]
-  (constant-types (type exp)))
-
 (defn check-class [class-name]
   (try
     (Class/forName class-name)
@@ -41,7 +36,7 @@
 (defn annotate-exp [[kind & args :as exp]]
   (case kind
     :constant
-    (with-type exp (-> args first type-constant))
+    (with-type exp (-> args first type))
     :class
     (with-type exp Class {:class (check-class (first args))})
     :get-static-field
