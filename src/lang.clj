@@ -5,7 +5,7 @@
    )
   )
 
-(def constant-types #{String Long})
+(def constant-types #{String Long Boolean})
 
 (defn type-constant [exp]
   (constant-types (type exp)))
@@ -81,6 +81,15 @@
       (with-meta (into [:invoke-instance-method annotated-instance method-name] annotated-args)
         {:type (.getReturnType method) :method method}))
 
+    :if
+    (let [[an-cond an-true an-false] (map annotate args)]
+      (when-not (= Boolean (-> an-cond meta :type))
+        (throw (ex-info "condition was not boolean" {:exp exp})))
+      (when-not (= (-> an-true meta :type) (-> an-false meta :type))
+        (throw (ex-info "if branches where different type"
+                        {:exp exp :t-true (-> an-true meta :type) :t-false (-> an-false meta :type)})))
+      (with-meta [:if an-cond an-true an-false] {:type (-> an-true meta :type)}))
+
     (throw (ex-info "unknown exp type" {:exp exp}))))
 
 (defn eval-annotated-exp [[kind & args :as exp]]
@@ -112,6 +121,10 @@
           instance (eval-annotated-exp instance-exp)
           method (-> exp meta :method)]
       (.invoke method instance (into-array Object args)))
+
+    :if
+    (let [[cond t f] args]
+      (if (eval-annotated-exp cond) (eval-annotated-exp t) (eval-annotated-exp f)))
 
     (throw (ex-info "unknown exp type" {:exp exp}))))
 
