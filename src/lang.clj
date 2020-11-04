@@ -109,9 +109,16 @@
       (when-not (= (annotated-type an-true) (annotated-type an-false))
         (throw (ex-info "if branches where different type"
                         {:exp exp :t-true (annotated-type an-true) :t-false (annotated-type an-false)})))
-      (with-type [:if an-cond an-true an-false] (annotated-type an-true)))
+      (with-type [kind an-cond an-true an-false] (annotated-type an-true)))
     :var
     (with-type exp (symbol-table (first args)))
+    :upcast
+    (let [[exp t] args
+          annotated-exp (annotate-exp symbol-table exp)]
+      (when-not (.isAssignableFrom t (annotated-type annotated-exp))
+        (throw (ex-info "upcast invalid: exp is not a sub-type of t" {:inferred-type (annotated-type annotated-exp)
+                                                                      :upcast-type t})))
+      (with-type annotated-exp t))
 
     (throw (ex-info "unknown exp type" {:exp exp}))))
 

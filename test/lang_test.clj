@@ -37,7 +37,15 @@
     (is (thrown? clojure.lang.ExceptionInfo (t [:if [:constant "not bool"] [:constant 3] [:constant 5]])))
     (is (thrown? clojure.lang.ExceptionInfo (t [:if [:constant true] [:constant 3] [:constant "not same type as 3"]])))
     (is (= Long (t [:if [:constant true] [:constant 3] [:constant 5]])))
-    (is (= String (t {:x String} [:var :x])))))
+    (is (= String (t {:x String} [:var :x])))
+
+    (is (thrown? clojure.lang.ExceptionInfo #"upcast invalid" (t [:upcast [:constant 5] String])))
+    (is (thrown? clojure.lang.ExceptionInfo #"upcast invalid" (t [:upcast [:constant ""] Number])))
+    (is (thrown? clojure.lang.ExceptionInfo #"upcast invalid" (t [:upcast [:constant (Object.)] Number])))
+    (is (= Number (t [:upcast [:constant 3] Number])))
+    (is (= Number (t [:if [:constant true]
+                      [:upcast [:constant 3] Number]
+                      [:upcast [:constant 3.0] Number]])))))
 
 (deftest eval-annotated-exp-test
   (let [eval-exp (fn eval-exp
@@ -65,7 +73,14 @@
     (is (= 3 (eval-exp [:if [:constant true] [:constant 3] [:constant 5]])))
     (is (= 5 (eval-exp [:if [:constant false] [:constant 3] [:constant 5]])))
 
-    (is (= "abc" (eval-exp {:x "abc"} [:var :x])))))
+    (is (= "abc" (eval-exp {:x "abc"} [:var :x])))
+
+    (is (= 3 (eval-exp [:if [:constant true]
+                        [:upcast [:constant 3] Number]
+                        [:upcast [:constant 3.0] Number]])))
+    (is (= 3.0 (eval-exp [:if [:constant false]
+                          [:upcast [:constant 3] Number]
+                          [:upcast [:constant 3.0] Number]])))))
 
 (deftest preservation-test
   (let [pres (fn pres
