@@ -1,9 +1,4 @@
-(ns lang
-  (:require
-   [clojure.pprint :as pprint]
-   [clojure.reflect :as reflect]
-   )
-  )
+(ns lang)
 
 (def constant-types #{String Long Boolean})
 
@@ -134,17 +129,3 @@
 
     (throw (ex-info "unknown exp type" {:exp exp}))))
 
-(comment
-  (defn ppreflect
-    "Pretty print a table describing all public members of the given object"
-    [obj]
-    (->> (reflect/reflect obj)
-         :members
-         (filter #(-> % :flags :public))
-         (map #(assoc %
-                      :kind (-> % type .getSimpleName)
-                      :arity (count (:parameter-types %))))
-                                        ;      (filter #(= (:kind %) "Constructor"))
-         (sort-by (juxt :kind :name))
-         (pprint/print-table [:kind :name :arity :parameter-types :return-type :flags])))
-  )
