@@ -20,10 +20,13 @@
     (is (= Long (t [:construct "java.lang.Long" [:constant "23"]])))
     (is (= BigDecimal (t [:construct "java.math.BigDecimal" [:constant "23"]])))
 
-    (is (= Long (t [:invoke-static-method "java.lang.Long" "getLong" [:constant "java.specification.version"]
-                    [:constant 34]])))
+    (is (thrown? clojure.lang.ExceptionInfo #"ambiguous"
+                 (t [:invoke-static-method "java.lang.Long" "getLong" [:constant "java.specification.version"]
+                     [:constant 34]])))
+    (is (= String (t [:invoke-static-method "java.lang.Long" "toHexString" [:constant 42]])))
 
     (is (= String (t [:invoke-instance-method [:constant 12] "toString"])))
+    (is (= Integer (t [:invoke-instance-method [:constant 12] "compareTo" [:constant 12]])))
 
     (is (= java.time.Month (t [:get-static-field "java.time.Month" "JULY"])))
 
@@ -44,9 +47,7 @@
     (is (= "abc" (eval-exp [:construct "java.lang.String" [:constant "abc"]])))
     (is (= 123 (eval-exp [:construct "java.lang.Long" [:constant "123"]])))
 
-    (is (= 14
-           (eval-exp [:invoke-static-method "java.lang.Long" "getLong" [:constant "java.specification.version"]
-                      [:constant 34]])))
+    (is (= 14 (eval-exp [:invoke-static-method "java.lang.Long" "valueOf" [:constant "14"]])))
 
     (is (= "123" (eval-exp [:invoke-instance-method [:constant 123] "toString"])))
     (is (= 6 (eval-exp [:invoke-instance-method [:construct "experimentation.java.PublicInstanceField"] "plus"])))
@@ -73,7 +74,7 @@
     (pres [:construct "java.lang.Long" [:constant "123"]] Long)
     (pres [:construct "java.math.BigDecimal" [:constant "123"]] BigDecimal)
 
-    (pres [:invoke-static-method "java.lang.Long" "getLong" [:constant "java.specification.version"] [:constant 34]] Long)
+    (pres [:invoke-static-method "java.lang.Long" "valueOf" [:constant "14"]] Long)
 
     (pres [:invoke-instance-method [:constant 12] "toString"] String)
 

@@ -12,11 +12,36 @@
     (catch java.lang.NoSuchMethodException e
       (throw (ex-info "constructor not found" {:ex e})))))
 
+(def primitive-type->wrapper
+  {Byte/TYPE Byte
+   Short/TYPE Short
+   Integer/TYPE Integer
+   Long/TYPE Long
+   Float/TYPE Float
+   Double/TYPE Double
+   Boolean/TYPE Boolean
+   Character/TYPE Character})
+
+(def wrap-primitive-types #(primitive-type->wrapper % %))
+
 (defn check-method [class-obj method-name parameter-types]
-  (try
-    (.getMethod class-obj method-name (into-array Class parameter-types))
-    (catch java.lang.NoSuchMethodException e
-      (throw (ex-info "method not found" {:ex e})))))
+  (let [methods
+        (filter (fn [method]
+                  (and (= (.getName method) method-name)
+                       (= parameter-types (map (comp wrap-primitive-types #(.getType %)) (.getParameters method)))))
+                (.getMethods class-obj))]
+    (case (count methods)
+      0
+      (throw (ex-info "method not found" {:class class-obj
+                                          :method-name method-name
+                                          :parameter-types parameter-types}))
+      1
+      (first methods)
+
+      (throw (ex-info "ambiguous method signature" {:class class-obj
+                                                    :method-name method-name
+                                                    :parameter-types parameter-types
+                                                    :methods methods})))))
 
 (defn check-field [class-obj method-name]
   (try
@@ -31,7 +56,7 @@
 
 (defn with-type
   ([exp t] (with-type exp t nil))
-  ([exp t additionals] (with-meta exp (merge {:type t} additionals))))
+  ([exp t additionals] (with-meta exp (merge {:type (wrap-primitive-types t)} additionals))))
 
 (defn annotate-exp [[kind & args :as exp]]
   (case kind
