@@ -38,7 +38,7 @@
   ([exp t] (with-type exp t nil))
   ([exp t additionals] (with-meta exp (merge {:type t} additionals))))
 
-(defn annotate [[kind & args :as exp]]
+(defn annotate-exp [[kind & args :as exp]]
   (case kind
     :constant
     (with-type exp (-> args first type-constant))
@@ -53,7 +53,7 @@
       (with-type exp (.getType field) {:class class-obj :field field}))
     :get-instance-field
     (let [[instance-exp field-name] args
-          annotated-instance (annotate instance-exp)
+          annotated-instance (annotate-exp instance-exp)
           field (check-field (annotated-type annotated-instance) field-name)]
       (when (static? field)
         (throw (ex-info "field not instance" {:exp exp})))
@@ -61,12 +61,12 @@
     :construct
     (let [[class-name & args] args
           c (check-class class-name)
-          annotated-args (map annotate args)
+          annotated-args (map annotate-exp args)
           ctor (check-constructor c (map annotated-type annotated-args))]
       (with-type (into [kind class-name] annotated-args) c {:ctor ctor}))
     :invoke-static-method
     (let [[class-name method-name & args] args
-          annotated-args (map annotate args)
+          annotated-args (map annotate-exp args)
           method (check-method (check-class class-name) method-name (map annotated-type annotated-args))]
       (when-not (static? method)
         (throw (ex-info "method not static" {:exp exp})))
@@ -74,8 +74,8 @@
         (.getReturnType method) {:method method}))
     :invoke-instance-method
     (let [[instance-exp method-name & args] args
-          annotated-instance (annotate instance-exp)
-          annotated-args (map annotate args)
+          annotated-instance (annotate-exp instance-exp)
+          annotated-args (map annotate-exp args)
           method (check-method (annotated-type annotated-instance) method-name (map annotated-type annotated-args))]
       (when (static? method)
         (throw (ex-info "method not instance" {:exp exp})))
@@ -83,7 +83,7 @@
         (.getReturnType method) {:method method}))
 
     :if
-    (let [[an-cond an-true an-false] (map annotate args)]
+    (let [[an-cond an-true an-false] (map annotate-exp args)]
       (when-not (= Boolean (annotated-type an-cond))
         (throw (ex-info "condition was not boolean" {:exp exp})))
       (when-not (= (annotated-type an-true) (annotated-type an-false))

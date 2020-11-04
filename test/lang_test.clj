@@ -1,12 +1,12 @@
 (ns lang-test
   (:require
    [clojure.test :refer [deftest is]]
-   [lang :refer [annotate eval-annotated-exp]]
+   [lang :refer [annotate-exp eval-annotated-exp]]
    )
   )
 
 (deftest annotate-test
-  (let [t (fn [e] (-> e annotate meta :type))]
+  (let [t (fn [e] (-> e annotate-exp meta :type))]
     (is (= Boolean (t [:constant false])))
     (is (= Boolean (t [:constant true])))
     (is (= String (t [:constant "abc"])))
@@ -34,7 +34,7 @@
     (is (= Long (t [:if [:constant true] [:constant 3] [:constant 5]])))))
 
 (deftest eval-annotated-exp-test
-  (let [eval-exp (fn [exp] (eval-annotated-exp (annotate exp)))]
+  (let [eval-exp (fn [exp] (eval-annotated-exp (annotate-exp exp)))]
     (is (= "abc" (eval-exp [:constant "abc"])))
     (is (= 123 (eval-exp [:constant 123])))
 
@@ -61,7 +61,7 @@
 
 (deftest preservation-test
   (let [pres (fn [exp t]
-               (let [annotated-exp (annotate exp)]
+               (let [annotated-exp (annotate-exp exp)]
                  (is (= t (-> annotated-exp meta :type)))
                  (is (= t (class (eval-annotated-exp annotated-exp))))))]
     (pres [:constant "abc"] String)
