@@ -65,7 +65,7 @@
           method (check-method (check-class class-name) method-name (map annotated-type annotated-args))]
       (when-not (static? method)
         (throw (ex-info "method not static" {:exp exp})))
-      (with-type (into [:invoke-static-method class-name method-name] annotated-args)
+      (with-type (into [kind class-name method-name] annotated-args)
         (.getReturnType method) {:method method}))
     :invoke-instance-method
     (let [[instance-exp method-name & args] args
@@ -74,7 +74,7 @@
           method (check-method (annotated-type annotated-instance) method-name (map annotated-type annotated-args))]
       (when (static? method)
         (throw (ex-info "method not instance" {:exp exp})))
-      (with-type (into [:invoke-instance-method annotated-instance method-name] annotated-args)
+      (with-type (into [kind annotated-instance method-name] annotated-args)
         (.getReturnType method) {:method method}))
 
     :if
