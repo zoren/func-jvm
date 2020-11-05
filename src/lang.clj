@@ -153,7 +153,7 @@
     (let [[instance-exp _method-name & args] args
           instance (eval-annotated-exp env instance-exp)
           method (-> exp meta :method)]
-      (.invoke method instance (into-array Object args)))
+      (.invoke method instance (into-array Object (map (partial eval-annotated-exp env) args))))
 
     :if
     (let [[cond t f] args]
