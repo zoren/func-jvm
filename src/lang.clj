@@ -28,7 +28,9 @@
   (let [methods
         (filter (fn [method]
                   (and (= (.getName method) method-name)
-                       (= parameter-types (map (comp wrap-primitive-types #(.getType %)) (.getParameters method)))))
+                       (= parameter-types (map (comp wrap-primitive-types #(.getType %)) (.getParameters method)))
+                       (not (.isBridge method))
+                       ))
                 (.getMethods class-obj))]
     (case (count methods)
       0
