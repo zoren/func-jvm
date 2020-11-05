@@ -111,7 +111,10 @@
                         {:exp exp :t-true (annotated-type an-true) :t-false (annotated-type an-false)})))
       (with-type [kind an-cond an-true an-false] (annotated-type an-true)))
     :var
-    (with-type exp (symbol-table (first args)))
+    (do
+      (when-not (contains? symbol-table (first args))
+        (throw (ex-info "variable not found" {:exp exp})))
+      (with-type exp (symbol-table (first args))))
     :upcast
     (let [[exp t] args
           annotated-exp (annotate-exp symbol-table exp)]
