@@ -10,21 +10,33 @@
     (catch java.lang.ClassNotFoundException e
       (throw (ex-info "class not found" {:class-name class-name :ex e})))))
 
+(defn try-get-class [class-name]
+  (try
+    (Class/forName class-name)
+    (catch java.lang.ClassNotFoundException _ nil)))
+
 (defn check-constructor [class-obj parameter-types]
   (try
     (.getConstructor class-obj (into-array Class parameter-types))
     (catch java.lang.NoSuchMethodException e
       (throw (ex-info "constructor not found" {:ex e})))))
 
+(defn try-get-constructor [class-obj parameter-types]
+  (try
+    (when class-obj (.getConstructor class-obj (into-array Class parameter-types)))
+    (catch java.lang.NoSuchMethodException _ nil)))
+
+;;https://docs.oracle.com/javase/specs/jls/se7/html/jls-5.html#jls-5.1.7
 (def primitive-type->wrapper
-  {Byte/TYPE Byte
+  {Boolean/TYPE Boolean
+   Byte/TYPE Byte
    Short/TYPE Short
+   Character/TYPE Character
    Integer/TYPE Integer
    Long/TYPE Long
    Float/TYPE Float
    Double/TYPE Double
-   Boolean/TYPE Boolean
-   Character/TYPE Character})
+   })
 
 (defn wrap-primitive-types [t]
   (if (and (vector? t) (= 1 (count t)))
@@ -101,7 +113,7 @@
 
   (map (fn [m] (map #(.getName %) (.getTypeParameters m))) (get-arity-methods java.util.List "of" 1))
   (map (fn [m] (map #(.getParameterizedType %) (.getParameters m))) (get-arity-methods java.util.List "of" 1))
-  
+
   (first
    (spec-method
     (first (get-arity-methods java.util.List "of" 1))
@@ -140,14 +152,19 @@
   (check-method java.util.List "of" (repeat 20 Long))
   )
 
-(defn check-field [class-obj method-name]
+(defn check-field [class-obj field-name]
   (try
-    (.getField class-obj method-name)
+    (.getField class-obj field-name)
     (catch java.lang.NoSuchFieldException e
       (throw (ex-info "field not found" {:ex e})))))
 
+(defn try-get-field [class-obj field-name]
+  (try
+    (.getField class-obj field-name)
+    (catch java.lang.NoSuchFieldException _ nil)))
+
 (defn static? [member]
-  (-> member .getModifiers java.lang.reflect.Modifier/isStatic))
+  (and member (-> member .getModifiers java.lang.reflect.Modifier/isStatic)))
 
 (def annotated-type (comp :type meta))
 
@@ -157,88 +174,116 @@
                                                       [(wrap-primitive-types t)]
                                                       (wrap-primitive-types t))} additionals))))
 
-(defn annotate-exp [symbol-table [kind & args :as exp]]
-  (case kind
-    :constant
-    (with-type exp (-> args first type))
-    :class
-    (with-type exp Class {:class (check-class (first args))})
-    :get-static-field
-    (let [[class-name field-name] args
-          class-obj (check-class class-name)
-          field (check-field class-obj field-name)]
-      (when-not (static? field)
-        (throw (ex-info "field not static" {:exp exp})))
-      (with-type exp (.getType field) {:class class-obj :field field}))
-    :get-instance-field
-    (let [[instance-exp field-name] args
-          annotated-instance (annotate-exp symbol-table instance-exp)
-          field (check-field (first (annotated-type annotated-instance)) field-name)]
-      (when (static? field)
-        (throw (ex-info "field not instance" {:exp exp})))
-      (with-type [kind annotated-instance field-name] (.getType field) {:field field}))
-    :construct
-    (let [[class-name & args] args
-          c (check-class class-name)
-          annotated-args (map (partial annotate-exp symbol-table) args)
-          ctor (check-constructor c (map (comp first annotated-type) annotated-args))]
-      (with-type (into [kind class-name] annotated-args) c {:ctor ctor}))
-    :invoke-static-method
-    (let [[class-name method-name & args] args
-          annotated-args (map (partial annotate-exp symbol-table) args)
-          method (check-method (check-class class-name) method-name
-                               (map (comp first annotated-type) (map wrap-primitive-types annotated-args)))
-          _ (when-not (static? method) (throw (ex-info "method not static" {:exp exp})))
-          [param-types return-type] (spec-method method)]
-      (doseq [[pt a-arg] (map vector param-types annotated-args)]
-        (unify (wrap-primitive-types pt) (annotated-type a-arg)))
-      (with-type (into [kind class-name method-name] annotated-args)
-        return-type {:method method}))
-    :invoke-instance-method
-    (let [[instance-exp method-name & args] args
-          annotated-instance (annotate-exp symbol-table instance-exp)
-          annotated-args (map (partial annotate-exp symbol-table) args)
-          method (check-method (first (annotated-type annotated-instance)) method-name
-                               (map (comp first annotated-type) annotated-args))]
-      (when (static? method)
-        (throw (ex-info "method not instance" {:exp exp})))
-      (with-type (into [kind annotated-instance method-name] annotated-args)
-        (.getReturnType method) {:method method}))
+;; nil, null?
 
-    :if
-    (let [[an-cond an-true an-false] (map (partial annotate-exp symbol-table) args)]
-      #_(when-not (= Boolean (annotated-type an-cond))
-          (throw (ex-info "condition was not boolean" {:exp exp})))
-      (unify [Boolean] (annotated-type an-cond))
-      (unify (annotated-type an-true) (annotated-type an-false))
-      #_(when-not (= (annotated-type an-true) (annotated-type an-false))
-          (throw (ex-info "if branches where different type"
-                          {:exp exp :t-true (annotated-type an-true) :t-false (annotated-type an-false)})))
+(defn annotate-exp [symbol-table]
+  (let [errors (atom [])
+        error (fn error
+                ([message] (error message {}))
+                ([message args] (swap! errors conj (assoc args :message message))
+                 nil))
+        a-exp
+        (fn a-exp [[kind & args :as exp]]
+          (case kind
+            :constant
+            (with-type exp (-> args first type))
 
-      (with-type [kind an-cond an-true an-false] (annotated-type an-true)))
-    :var
-    (do
-      (when-not (contains? symbol-table (first args))
-        (throw (ex-info "variable not found" {:exp exp})))
-      (with-type exp (symbol-table (first args))))
-    :upcast
-    (let [[exp t] args
-          annotated-exp (annotate-exp symbol-table exp)]
-      (when-not (.isAssignableFrom t (first (annotated-type annotated-exp)))
-        (throw (ex-info "upcast invalid: exp is not a sub-type of t" {:inferred-type (annotated-type annotated-exp)
-                                                                      :upcast-type t})))
-      (with-type annotated-exp t))
+            :class
+            (let [[class-name] args
+                  class-obj (try-get-class class-name)]
+              (when-not class-obj (error :class-not-found {:name class-name}))
+              (with-type exp Class {:class class-obj}))
 
-    (throw (ex-info "unknown exp type" {:exp exp}))))
+            :construct
+            (let [[class-name & args] args
+                  class-obj (try-get-class class-name)
+                  _ (when-not class-obj (error :class-not-found {:name class-name}))
+                  annotated-args (map a-exp args)
+                  arg-types (map (comp first annotated-type) annotated-args)
+                  ctor (when class-obj
+                         (let [ctor (try-get-constructor class-obj arg-types)]
+                           (when-not ctor (error :constructor-not-found {:name class-name :arg-types arg-types}))
+                           ctor))]
+              (with-type (into [kind class-name] annotated-args) class-obj {:ctor ctor}))
 
-(comment
-  (annotate-exp {} [:invoke-static-method "java.util.List" "of" [:constant 42] [:constant "abc"]])
-  (renumber
-   (normalize (annotated-type (annotate-exp {} [:invoke-static-method "java.util.List" "of"]))))
-  (renumber
-   (normalize (annotated-type (annotate-exp {} [:invoke-static-method "java.util.List" "of" [:constant 42] [:constant 45]]))))
+            :get-static-field
+            (let [[class-name field-name] args
+                  class-obj (try-get-class class-name)
+                  _ (when-not class-obj (error :class-not-found {:name class-name}))
+                  field (when class-obj
+                          (let [field (try-get-field class-obj field-name)]
+                            (when-not field (error :field-not-found))
+                            field))
+                  t (if field (.getType field) Object)]
+              (when (and field (not (static? field))) (error :not-static {:member field}))
+              (with-type exp t {:class class-obj :field field}))
 
-  )
+            ;; :get-instance-field
+            ;; (let [[instance-exp field-name] args
+            ;;       annotated-instance (a-exp instance-exp)
+            ;;       field (check-field (first (annotated-type annotated-instance)) field-name)]
+            ;;   (when (static? field)
+            ;;     (throw (ex-info "field not instance" {:exp exp})))
+            ;;   (with-type [kind annotated-instance field-name] (.getType field) {:field field}))
+            ;; :invoke-static-method
+            ;; (let [[class-name method-name & args] args
+            ;;       annotated-args (map (annotate-exp symbol-table) args)
+            ;;       method (check-method (check-class class-name) method-name
+            ;;                            (map (comp first annotated-type) (map wrap-primitive-types annotated-args)))
+            ;;       _ (when-not (static? method) (throw (ex-info "method not static" {:exp exp})))
+            ;;       [param-types return-type] (spec-method method)]
+            ;;   (doseq [[pt a-arg] (map vector param-types annotated-args)]
+            ;;     (unify (wrap-primitive-types pt) (annotated-type a-arg)))
+            ;;   (with-type (into [kind class-name method-name] annotated-args)
+            ;;     return-type {:method method}))
+            ;; :invoke-instance-method
+            ;; (let [[instance-exp method-name & args] args
+            ;;       annotated-instance (a-exp instance-exp)
+            ;;       annotated-args (map (annotate-exp symbol-table) args)
+            ;;       method (check-method (first (annotated-type annotated-instance)) method-name
+            ;;                            (map (comp first annotated-type) annotated-args))]
+            ;;   (when (static? method)
+            ;;     (throw (ex-info "method not instance" {:exp exp})))
+            ;;   (with-type (into [kind annotated-instance method-name] annotated-args)
+            ;;     (.getReturnType method) {:method method}))
+
+            ;; :if
+            ;; (let [[an-cond an-true an-false] (map (annotate-exp symbol-table) args)]
+            ;;   #_(when-not (= Boolean (annotated-type an-cond))
+            ;;       (throw (ex-info "condition was not boolean" {:exp exp})))
+            ;;   (unify [Boolean] (annotated-type an-cond))
+            ;;   (unify (annotated-type an-true) (annotated-type an-false))
+            ;;   #_(when-not (= (annotated-type an-true) (annotated-type an-false))
+            ;;       (throw (ex-info "if branches where different type"
+            ;;                       {:exp exp :t-true (annotated-type an-true) :t-false (annotated-type an-false)})))
+
+            ;;   (with-type [kind an-cond an-true an-false] (annotated-type an-true)))
+            ;; :var
+            ;; (do
+            ;;   (when-not (contains? symbol-table (first args))
+            ;;     (throw (ex-info "variable not found" {:exp exp})))
+            ;;   (with-type exp (symbol-table (first args))))
+            ;; :upcast
+            ;; (let [[exp t] args
+            ;;       annotated-exp (a-exp exp)]
+            ;;   (when-not (.isAssignableFrom t (first (annotated-type annotated-exp)))
+            ;;     (throw (ex-info "upcast invalid: exp is not a sub-type of t" {:inferred-type (annotated-type annotated-exp)
+            ;;                                                                   :upcast-type t})))
+            ;;   (with-type annotated-exp t))
+
+            (throw (ex-info "unknown exp type" {:exp exp}))))
+        ]
+    (fn [e] [(a-exp e) @errors])
+    ))
+
+;; (comment
+;;   (annotate-exp {} [:invoke-static-method "java.util.List" "of" [:constant 42] [:constant "abc"]])
+;;   (renumber
+;;    (normalize (annotated-type (annotate-exp {} [:invoke-static-method "java.util.List" "of"]))))
+;;   (renumber
+;;    (normalize (annotated-type (annotate-exp {} [:invoke-static-method "java.util.List" "of" [:constant 42] [:constant 45]]))))
+
+;;   )
 
 (defn fn->function [f]
   (reify java.util.function.Function
