@@ -89,7 +89,7 @@
         (when-not (= (first nt1) (first nt2))
           (throw (ex-info "types differ" {:t1 nt1 :t2 nt2})))
         (when-not (= (count nt1) (count nt2))
-          (throw (ex-info "arity mismatch" {})))
+          (throw (ex-info "type arity mismatch" {:t1 nt1 :t2 nt2})))
         (doseq [[ta1 ta2] (map vector (rest nt1) (rest nt2))]
           (unify ta1 ta2)))
 

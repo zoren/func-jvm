@@ -80,7 +80,7 @@
 
 (first (get-arity-methods java.lang.Long "getLong" 2))
 
-(defn spec-method [method]
+(defn specialize-method [method]
   (let [m (into {} (map (fn [tp] [tp (mk-type-var 0)]) (.getTypeParameters method)))
         type->
         (fn type-> [t]
@@ -96,15 +96,15 @@
             [t]
 
             :else
-            (throw (ex-info "not found" {:t t}))))]
+            (throw (ex-info "specialize-method: unsupported type" {:t t :type (type t) :class? (class? t)}))))]
     [(map #(type-> (.getParameterizedType %)) (.getParameters method))
      (type-> (.getGenericReturnType method))]))
 
 (comment
-  (spec-method
+  (specialize-method
    (.getMethod java.lang.Long "getLong" (into-array Class [String Long])))
 
-  (spec-method
+  (specialize-method
    (.getMethod java.lang.Long "toHexString" (into-array Class [Long/TYPE])))
 
   (Long/toHexString 43)
@@ -115,7 +115,7 @@
   (map (fn [m] (map #(.getParameterizedType %) (.getParameters m))) (get-arity-methods java.util.List "of" 1))
 
   (first
-   (spec-method
+   (specialize-method
     (first (get-arity-methods java.util.List "of" 1))
     )
    )
@@ -182,6 +182,25 @@
                 ([message] (error message {}))
                 ([message args] (swap! errors conj (assoc args :message message))
                  nil))
+        try-get-method
+        (fn [class-obj method-name args]
+          (let [arity-methods (if class-obj
+                                (get-arity-methods class-obj method-name (count args))
+                                [])]
+            (when class-obj
+              (case (count arity-methods)
+                0 (error :method-not-found)
+
+                1 (first arity-methods)
+
+                (error :ambiguous-method-signature {:method-candidates arity-methods})))))
+        unify-message
+        (fn [t1 t2 message]
+          (try
+            (unify t1 t2)
+            nil
+            (catch clojure.lang.ExceptionInfo _e
+              (error message {:t1 t1 :t2 t2}))))
         a-exp
         (fn a-exp [[kind & args :as exp]]
           (case kind
@@ -218,63 +237,84 @@
               (when (and field (not (static? field))) (error :not-static {:member field}))
               (with-type exp t {:class class-obj :field field}))
 
-            ;; :get-instance-field
-            ;; (let [[instance-exp field-name] args
-            ;;       annotated-instance (a-exp instance-exp)
-            ;;       field (check-field (first (annotated-type annotated-instance)) field-name)]
-            ;;   (when (static? field)
-            ;;     (throw (ex-info "field not instance" {:exp exp})))
-            ;;   (with-type [kind annotated-instance field-name] (.getType field) {:field field}))
-            ;; :invoke-static-method
-            ;; (let [[class-name method-name & args] args
-            ;;       annotated-args (map (annotate-exp symbol-table) args)
-            ;;       method (check-method (check-class class-name) method-name
-            ;;                            (map (comp first annotated-type) (map wrap-primitive-types annotated-args)))
-            ;;       _ (when-not (static? method) (throw (ex-info "method not static" {:exp exp})))
-            ;;       [param-types return-type] (spec-method method)]
-            ;;   (doseq [[pt a-arg] (map vector param-types annotated-args)]
-            ;;     (unify (wrap-primitive-types pt) (annotated-type a-arg)))
-            ;;   (with-type (into [kind class-name method-name] annotated-args)
-            ;;     return-type {:method method}))
-            ;; :invoke-instance-method
-            ;; (let [[instance-exp method-name & args] args
-            ;;       annotated-instance (a-exp instance-exp)
-            ;;       annotated-args (map (annotate-exp symbol-table) args)
-            ;;       method (check-method (first (annotated-type annotated-instance)) method-name
-            ;;                            (map (comp first annotated-type) annotated-args))]
-            ;;   (when (static? method)
-            ;;     (throw (ex-info "method not instance" {:exp exp})))
-            ;;   (with-type (into [kind annotated-instance method-name] annotated-args)
-            ;;     (.getReturnType method) {:method method}))
+            :get-instance-field
+            (let [[instance-exp field-name] args
+                  annotated-instance (a-exp instance-exp)
+                  field (try-get-field (first (annotated-type annotated-instance)) field-name)
+                  t (if field
+                      (do
+                        (when (static? field) (error :static))
+                        (.getType field))
+                      (do
+                        (error :field-not-found)
+                        Object))]
+              (with-type [kind annotated-instance field-name] t {:field field}))
 
-            ;; :if
-            ;; (let [[an-cond an-true an-false] (map (annotate-exp symbol-table) args)]
-            ;;   #_(when-not (= Boolean (annotated-type an-cond))
-            ;;       (throw (ex-info "condition was not boolean" {:exp exp})))
-            ;;   (unify [Boolean] (annotated-type an-cond))
-            ;;   (unify (annotated-type an-true) (annotated-type an-false))
-            ;;   #_(when-not (= (annotated-type an-true) (annotated-type an-false))
-            ;;       (throw (ex-info "if branches where different type"
-            ;;                       {:exp exp :t-true (annotated-type an-true) :t-false (annotated-type an-false)})))
+            :invoke-static-method
+            (let [[class-name method-name & args] args
+                  class-obj (try-get-class class-name)
+                  _ (when-not class-obj (error :class-not-found {:name class-name}))
+                  method (try-get-method class-obj method-name args)
+                  annotated-args (map a-exp args)
+                  [param-types return-type]
+                  (if method
+                    (do
+                      (when-not (static? method) (error :not-static {:member method}))
+                      (specialize-method method))
+                    [(map annotated-type (map wrap-primitive-types annotated-args)) Object])]
+              (doseq [[pt a-arg] (map vector param-types annotated-args)]
+                (unify-message (wrap-primitive-types pt) (annotated-type a-arg) :argument-type-no-match))
+              (with-type (into [kind class-name method-name] annotated-args) return-type {:method method}))
 
-            ;;   (with-type [kind an-cond an-true an-false] (annotated-type an-true)))
-            ;; :var
-            ;; (do
-            ;;   (when-not (contains? symbol-table (first args))
-            ;;     (throw (ex-info "variable not found" {:exp exp})))
-            ;;   (with-type exp (symbol-table (first args))))
-            ;; :upcast
-            ;; (let [[exp t] args
-            ;;       annotated-exp (a-exp exp)]
-            ;;   (when-not (.isAssignableFrom t (first (annotated-type annotated-exp)))
-            ;;     (throw (ex-info "upcast invalid: exp is not a sub-type of t" {:inferred-type (annotated-type annotated-exp)
-            ;;                                                                   :upcast-type t})))
-            ;;   (with-type annotated-exp t))
+            :invoke-instance-method
+            (let [[instance-exp method-name & args] args
+                  annotated-instance (a-exp instance-exp)
+                  method (try-get-method (first (annotated-type annotated-instance)) method-name args)
+                  annotated-args (map a-exp args)
+                  [param-types return-type]
+                  (if method
+                    (do
+                      (when (static? method) (error :static {:member method}))
+                      (specialize-method method))
+                    [(map annotated-type (map wrap-primitive-types annotated-args)) Object])]
+              (doseq [[pt a-arg] (map vector param-types annotated-args)]
+                (unify-message (wrap-primitive-types pt) (annotated-type a-arg) :argument-type-no-match))
+              (with-type (into [kind annotated-instance method-name] annotated-args) return-type {:method method}))
+
+            :if
+            (let [[an-cond an-true an-false] (map a-exp args)]
+              (unify-message [Boolean] (annotated-type an-cond) :if-cond-not-boolean)
+              (unify-message (annotated-type an-true) (annotated-type an-false) :if-branches-differ)
+              (with-type [kind an-cond an-true an-false] (annotated-type an-true)))
+
+            :variable
+            (let [[variable-name] args]
+              (when-not (contains? symbol-table variable-name)
+                (error :variable-not-found {:variable-name variable-name}))
+              (with-type exp (symbol-table variable-name)))
+
+            :upcast
+            (let [[exp t] args
+                  annotated-exp (a-exp exp)
+                  inferred-type (annotated-type annotated-exp)]
+              (when-not (unify/type? t) (error :not-a-type {:type t}))
+              ;; todo what about type params/args?
+              (when-not (.isAssignableFrom (first t) (first inferred-type))
+                (error :upcast-invalid {:inferred-type inferred-type :upcast-type t}))
+              ;; todo this won't work generally, we need a general subtyping concept as in java
+              (doseq [[type-arg inferred-type-arg] (map vector (rest t) (rest inferred-type))]
+                (when-not (.isAssignableFrom (first type-arg) (first (normalize inferred-type-arg)))
+                  (error :upcast-invalid-type-arg {:type-arg type-arg
+                                                   :inferred-type-arg inferred-type-arg})))
+              (with-type annotated-exp t))
 
             (throw (ex-info "unknown exp type" {:exp exp}))))
         ]
-    (fn [e] [(a-exp e) @errors])
+    (fn [e] {:annotated-exp (a-exp e) :errors @errors})
     ))
+
+;; https://www.logicbig.com/how-to/code-snippets/jcode-reflection-class-isassignablefrom.html
+;; Object[] isAssignableFrom Integer[]: true
 
 ;; (comment
 ;;   (annotate-exp {} [:invoke-static-method "java.util.List" "of" [:constant 42] [:constant "abc"]])

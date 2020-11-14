@@ -14,8 +14,8 @@
 (defn t
   ([e] (t {} e))
   ([st e]
-   (let [[annotated-exp errors] ((annotate-exp st) e)]
-     (when-not (empty? errors) (throw (ex-info "there where errors" {})))
+   (let [{:keys [annotated-exp errors]} ((annotate-exp st) e)]
+     (when-not (empty? errors) (throw (ex-info "there where errors" {:errors errors})))
      (-> annotated-exp
          annotated-type
          normalize
@@ -25,16 +25,21 @@
          )
      )))
 
-(defn t-errors
-  ([e] (t-errors {} e))
+(defn first! [s]
+  (when-not (= (count s) 1) (throw (ex-info "expected one element" {:found s})))
+  (first s))
+
+(defn t-error
+  ([e] (t-error {} e))
   ([st e]
-   (let [[_annotated-exp errors] ((annotate-exp st) e)]
+   (let [{:keys [errors]} ((annotate-exp st) e)]
      (when (empty? errors) (throw (ex-info "no error" {})))
      (-> errors
-         unwrap-singleton)
+         first!
+         :message)
      )))
 
-(deftest annotate-test
+(deftest annotate-exp-test
   (testing "constant"
     (is (= Boolean (t [:constant false])))
     (is (= Boolean (t [:constant true])))
@@ -42,56 +47,107 @@
     (is (= Long (t [:constant 123]))))
 
   (testing "class expression"
-    (is (= :class-not-found (:message (t-errors [:class "NoSuchClass"]))))
+    (is (= :class-not-found (t-error [:class "NoSuchClass"])))
     (is (= Class (t [:class "java.lang.Long"]))))
 
   (testing "construct"
     (is (= :class-not-found
-           (:message (t-errors [:construct "NoSuchClass"]))))
+           (t-error [:construct "NoSuchClass"])))
     (is (= :constructor-not-found
-           (:message (t-errors [:construct "java.lang.Long" [:constant 34]]))))
+           (t-error [:construct "java.lang.Long" [:constant 34]])))
     (is (= Object (t [:construct "java.lang.Object"])))
     (is (= Long (t [:construct "java.lang.Long" [:constant "23"]])))
     (is (= BigDecimal (t [:construct "java.math.BigDecimal" [:constant "23"]]))))
 
   (testing "static field"
     (is (= :class-not-found
-           (:message (t-errors [:get-static-field "NoSuchClass" "noSuchField"]))))
+           (t-error [:get-static-field "NoSuchClass" "noSuchField"])))
     (is (= :field-not-found
-           (:message (t-errors [:get-static-field "java.time.Month" "noSuchField"]))))
+           (t-error [:get-static-field "java.time.Month" "noSuchField"])))
     (is (= :not-static
-           (:message (t-errors [:get-static-field "experimentation.java.PublicInstanceField" "x"]))))
+           (t-error [:get-static-field "experimentation.java.PublicInstanceField" "x"])))
     (is (= java.time.Month (t [:get-static-field "java.time.Month" "JULY"]))))
 
-  ;; (is (thrown? clojure.lang.ExceptionInfo #"ambiguous"
-  ;;              (t [:invoke-static-method "java.lang.Long" "getLong" [:constant "java.specification.version"]
-  ;;                  [:constant 34]])))
-  ;; ;; uses primitive type
-  ;; (is (= String (t [:invoke-static-method "java.lang.Long" "toHexString" [:constant 42]])))
-  ;; (is (= [java.util.List :a] (t [:invoke-static-method "java.util.List" "of"])))
-  ;; (is (= [java.util.List [Long]] (t [:invoke-static-method "java.util.List" "of" [:constant 42]])))
-  ;; (is (= [java.util.List [Long]] (t [:invoke-static-method "java.util.List" "of" [:constant 5] [:constant 6]])))
-  ;; (is (thrown? clojure.lang.ExceptionInfo #"differ"
-  ;;              (t [:invoke-static-method "java.util.List" "of" [:constant 42] [:constant "abc"]])))
+  (testing "instance field"
+    (is (= :static
+           (t-error [:get-instance-field [:get-static-field "java.time.Month" "JULY"] "JULY"])))
+    (is (= :field-not-found
+           (t-error [:get-instance-field [:construct "experimentation.java.PublicInstanceField"] "noSuchField"])))
+    (is (= Long (t [:get-instance-field [:construct "experimentation.java.PublicInstanceField"] "x"]))))
 
-  ;; (is (= String (t [:invoke-instance-method [:constant 12] "toString"])))
-  ;; (is (= Integer (t [:invoke-instance-method [:constant 12] "compareTo" [:constant 12]])))
+  (testing "static method invocation"
+    (is (= :class-not-found
+           (t-error [:invoke-static-method "NoSuchClass" "methodName"])))
+    (is (= :method-not-found
+           (t-error [:invoke-static-method "java.lang.Long" "noSuchMethod"])))
+    (is (= :not-static
+           (t-error [:invoke-static-method "java.lang.Long" "toString"])))
+    (is (= :ambiguous-method-signature
+           (t-error [:invoke-static-method "java.lang.Long" "getLong" [:constant "java.specification.version"]
+                     [:constant 34]])))
+    (is (= :argument-type-no-match
+           (t-error [:invoke-static-method "java.util.List" "of" [:constant 42] [:constant "abc"]])))
 
-  ;; (is (= Long (t [:get-instance-field [:construct "experimentation.java.PublicInstanceField"] "x"])))
+    ;; uses primitive type
+    (is (= String (t [:invoke-static-method "java.lang.Long" "toHexString" [:constant 42]])))
+    (is (= [java.util.List :a] (t [:invoke-static-method "java.util.List" "of"])))
+    (is (= [java.util.List [Long]] (t [:invoke-static-method "java.util.List" "of" [:constant 42]])))
+    (is (= [java.util.List [Long]] (t [:invoke-static-method "java.util.List" "of" [:constant 5] [:constant 6]]))))
 
-  ;; (is (thrown? clojure.lang.ExceptionInfo (t [:if [:constant "not bool"] [:constant 3] [:constant 5]])))
-  ;; (is (thrown? clojure.lang.ExceptionInfo (t [:if [:constant true] [:constant 3] [:constant "not same type as 3"]])))
-  ;; (is (= Long (t [:if [:constant true] [:constant 3] [:constant 5]])))
+  (testing "instance method invocation"
+    (is (= :method-not-found (t-error [:invoke-instance-method [:constant 12] "noSuchMethod"])))
+    (is (= :static (t-error [:invoke-instance-method [:constant 12] "toHexString" [:constant 42]])))
+    (is (= :argument-type-no-match (t-error [:invoke-instance-method [:constant 12] "compareTo" [:constant ""]])))
 
-  ;; (is (= String (t {:x String} [:var :x])))
+    (is (= String (t [:invoke-instance-method [:constant 12] "toString"])))
+    (is (= Integer (t [:invoke-instance-method [:constant 12] "compareTo" [:constant 12]]))))
 
-  ;; (is (thrown? clojure.lang.ExceptionInfo #"upcast invalid" (t [:upcast [:constant 5] String])))
-  ;; (is (thrown? clojure.lang.ExceptionInfo #"upcast invalid" (t [:upcast [:constant ""] Number])))
-  ;; (is (thrown? clojure.lang.ExceptionInfo #"upcast invalid" (t [:upcast [:constant (Object.)] Number])))
-  ;; (is (= Number (t [:upcast [:constant 3] Number])))
-  ;; (is (= Number (t [:if [:constant true]
-  ;;                   [:upcast [:constant 3] Number]
-  ;;                   [:upcast [:constant 3.0] Number]])))
+  (testing "if"
+    (is (= :if-cond-not-boolean (t-error [:if [:constant "not bool"] [:constant 3] [:constant 5]])))
+    (is (= :if-branches-differ (t-error [:if [:constant true] [:constant 3] [:constant "not same type as 3"]])))
+    (is (= :if-branches-differ
+           (t-error [:if [:constant true]
+                     [:invoke-static-method "java.util.List" "of" [:constant 42]]
+                     [:invoke-static-method "java.util.List" "of" [:constant 42.0]]])))
+
+    (is (= Long (t [:if [:constant true] [:constant 3] [:constant 5]])))
+    (is (= [java.util.List [Long]]
+           (t [:if [:constant true]
+               [:invoke-static-method "java.util.List" "of" [:constant 42]]
+               [:invoke-static-method "java.util.List" "of" [:constant 123]]])))
+    (is (= [java.util.List [Long]]
+           (t [:if [:constant true]
+               [:invoke-static-method "java.util.List" "of"]
+               [:invoke-static-method "java.util.List" "of" [:constant 123]]])))
+    (is (= [java.util.List :a]
+           (t [:if [:constant true]
+               [:invoke-static-method "java.util.List" "of"]
+               [:invoke-static-method "java.util.List" "of"]]))))
+
+  (testing "variable"
+    (is (= :variable-not-found (t-error [:variable "noSuchVar"])))
+
+    (is (= String (t {:x [String]} [:variable :x]))))
+
+  (testing "upcast annotation"
+    (is (= :upcast-invalid (t-error [:upcast [:constant 5] [String]])))
+    (is (= :upcast-invalid (t-error [:upcast [:constant ""] [Number]])))
+    (is (= :upcast-invalid (t-error [:upcast [:constant (Object.)] [Number]])))
+    (is (= :upcast-invalid (t-error [:upcast [:upcast [:constant 3] [Number]] [Long]])))
+    (is (= :upcast-invalid (t-error [:upcast [:upcast [:constant 3] [Number]] [Long]])))
+    (is (= :upcast-invalid-type-arg
+           (t-error [:upcast [:invoke-static-method "java.util.List" "of" [:constant 42]] [java.util.List [String]]])))
+
+    (is (= Number (t [:upcast [:constant 3] [Number]])))
+    (is (= Number (t [:upcast [:constant 3.0] [Number]])))
+    (is (= Number (t [:if [:constant true]
+                      [:upcast [:constant 3] [Number]]
+                      [:upcast [:constant 3.0] [Number]]])))
+    (is (= [java.util.Collection [Long]]
+           (t [:upcast [:invoke-static-method "java.util.List" "of" [:constant 42]] [java.util.Collection [Long]]])))
+    (is (= [java.lang.Iterable [Long]]
+           (t [:upcast [:invoke-static-method "java.util.List" "of" [:constant 42]] [java.lang.Iterable [Long]]])))
+    )
   )
 
 ;; (defn eval-exp
