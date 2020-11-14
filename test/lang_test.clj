@@ -20,10 +20,7 @@
          annotated-type
          normalize
          renumber
-         unwrap-singleton
-                                        ;       first
-         )
-     )))
+         unwrap-singleton))))
 
 (defn first! [s]
   (when-not (= (count s) 1) (throw (ex-info "expected one element" {:found s})))
@@ -36,8 +33,7 @@
      (when (empty? errors) (throw (ex-info "no error" {})))
      (-> errors
          first!
-         :message)
-     )))
+         :message))))
 
 (deftest annotate-exp-test
   (testing "constant"
@@ -90,6 +86,7 @@
 
     ;; uses primitive type
     (is (= String (t [:invoke-static-method "java.lang.Long" "toHexString" [:constant 42]])))
+    (is (= Long (t [:invoke-static-method "java.lang.Long" "valueOf" [:constant "14"]])))
     (is (= [java.util.List :a] (t [:invoke-static-method "java.util.List" "of"])))
     (is (= [java.util.List [Long]] (t [:invoke-static-method "java.util.List" "of" [:constant 42]])))
     (is (= [java.util.List [Long]] (t [:invoke-static-method "java.util.List" "of" [:constant 5] [:constant 6]]))))
@@ -136,7 +133,8 @@
     (is (= :upcast-invalid (t-error [:upcast [:upcast [:constant 3] [Number]] [Long]])))
     (is (= :upcast-invalid (t-error [:upcast [:upcast [:constant 3] [Number]] [Long]])))
     (is (= :upcast-invalid-type-arg
-           (t-error [:upcast [:invoke-static-method "java.util.List" "of" [:constant 42]] [java.util.List [String]]])))
+           (t-error [:upcast [:invoke-static-method "java.util.List" "of" [:constant 42]]
+                     [java.util.List [String]]])))
 
     (is (= Number (t [:upcast [:constant 3] [Number]])))
     (is (= Number (t [:upcast [:constant 3.0] [Number]])))
@@ -144,86 +142,61 @@
                       [:upcast [:constant 3] [Number]]
                       [:upcast [:constant 3.0] [Number]]])))
     (is (= [java.util.Collection [Long]]
-           (t [:upcast [:invoke-static-method "java.util.List" "of" [:constant 42]] [java.util.Collection [Long]]])))
+           (t [:upcast [:invoke-static-method "java.util.List" "of" [:constant 42]]
+               [java.util.Collection [Long]]])))
     (is (= [java.lang.Iterable [Long]]
-           (t [:upcast [:invoke-static-method "java.util.List" "of" [:constant 42]] [java.lang.Iterable [Long]]])))
+           (t [:upcast [:invoke-static-method "java.util.List" "of" [:constant 42]]
+               [java.lang.Iterable [Long]]])))
     )
   )
 
-;; (defn eval-exp
-;;   ([exp] (eval-exp {} exp))
-;;   ([st-env exp] (eval-annotated-exp
-;;                  (into {} (map (fn [[variable [_t value]]] [variable value]) st-env))
-;;                  (annotate-exp (into {} (map (fn [[variable [t _value]]] [variable t]) st-env)) exp))))
+(defn eval-exp
+  ([exp] (eval-exp {} exp))
+  ([st-env exp]
+   (let [st (into {} (map (fn [[variable [t _value]]] [variable t]) st-env))
+         {:keys [annotated-exp errors]} ((annotate-exp st) exp)
+         _ (when-not (empty? errors) (throw (ex-info "there were errors" {:errors errors})))
+         env (into {} (map (fn [[variable [_t value]]] [variable value]) st-env))]
+     (eval-annotated-exp env annotated-exp))))
 
-;; (comment
-;;   (annotate-exp [:invoke-static-method "java.util.List" "of" [:constant 42] [:constant "abc"]])
-;;   (eval-exp [:invoke-instance-method [:get-static-field "java.lang.System" "out"] "println" [:constant "hello, world"]])
-;;   (java.util.List/of 2 "")
-;;   )
+(comment
+  (annotate-exp [:invoke-static-method "java.util.List" "of" [:constant 42] [:constant "abc"]])
+  (eval-exp [:invoke-instance-method [:get-static-field "java.lang.System" "out"] "println"
+             [:constant "hello, world"]])
+  )
 
-;; (deftest eval-annotated-exp-test
-;;   (is (= "abc" (eval-exp [:constant "abc"])))
-;;   (is (= 123 (eval-exp [:constant 123])))
+(deftest eval-annotated-exp-test
+  (is (= "abc" (eval-exp [:constant "abc"])))
+  (is (= 123 (eval-exp [:constant 123])))
 
-;;   (is (= Long (eval-exp [:class "java.lang.Long"])))
+  (is (= Long (eval-exp [:class "java.lang.Long"])))
 
-;;   (is (= Object (type (eval-exp [:construct "java.lang.Object"]))))
-;;   (is (= "abc" (eval-exp [:construct "java.lang.String" [:constant "abc"]])))
-;;   (is (= 123 (eval-exp [:construct "java.lang.Long" [:constant "123"]])))
+  (is (= Object (type (eval-exp [:construct "java.lang.Object"]))))
+  (is (= "abc" (eval-exp [:construct "java.lang.String" [:constant "abc"]])))
+  (is (= 123 (eval-exp [:construct "java.lang.Long" [:constant "123"]])))
 
-;;   (is (= 14 (eval-exp [:invoke-static-method "java.lang.Long" "valueOf" [:constant "14"]])))
+  (is (= java.time.Month/JULY (eval-exp [:get-static-field "java.time.Month" "JULY"])))
 
-;;   (is (= "123" (eval-exp [:invoke-instance-method [:constant 123] "toString"])))
-;;   (is (= 6 (eval-exp [:invoke-instance-method [:construct "experimentation.java.PublicInstanceField"] "plus"])))
-;;   (is (= "abc" (eval-exp [:invoke-instance-method
-;;                           [:invoke-instance-method
-;;                            [:construct "java.lang.StringBuilder" [:constant "a"]] "append" [:constant "bc"]
-;;                            ] "toString"])))
+  (is (= 5
+         (eval-exp [:get-instance-field [:construct "experimentation.java.PublicInstanceField"] "x"])))
 
-;;   (is (= java.time.Month/JULY (eval-exp [:get-static-field "java.time.Month" "JULY"])))
+  (is (= 14 (eval-exp [:invoke-static-method "java.lang.Long" "valueOf" [:constant "14"]])))
 
-;;   (is (= 5
-;;          (eval-exp [:get-instance-field [:construct "experimentation.java.PublicInstanceField"] "x"])))
+  (is (= "123" (eval-exp [:invoke-instance-method [:constant 123] "toString"])))
+  (is (= 6 (eval-exp [:invoke-instance-method [:construct "experimentation.java.PublicInstanceField"] "plus"])))
+  (is (= "abc" (eval-exp [:invoke-instance-method
+                          [:invoke-instance-method
+                           [:construct "java.lang.StringBuilder" [:constant "a"]] "append" [:constant "bc"]
+                           ] "toString"])))
 
-;;   (is (= 3 (eval-exp [:if [:constant true] [:constant 3] [:constant 5]])))
-;;   (is (= 5 (eval-exp [:if [:constant false] [:constant 3] [:constant 5]])))
+  (is (= 3 (eval-exp [:if [:constant true] [:constant 3] [:constant 5]])))
+  (is (= 5 (eval-exp [:if [:constant false] [:constant 3] [:constant 5]])))
 
-;;   (is (thrown? clojure.lang.ExceptionInfo #"variable not found" (eval-exp [:var :x])))
-;;   (is (= "abc" (eval-exp {:x [String "abc"]} [:var :x])))
+  (is (= "abc" (eval-exp {:x [String "abc"]} [:variable :x])))
 
-;;   (is (= 3 (eval-exp [:if [:constant true]
-;;                       [:upcast [:constant 3] Number]
-;;                       [:upcast [:constant 3.0] Number]])))
-;;   (is (= 3.0 (eval-exp [:if [:constant false]
-;;                         [:upcast [:constant 3] Number]
-;;                         [:upcast [:constant 3.0] Number]]))))
-
-;; (deftest preservation-test
-;;   (let [pres (fn pres
-;;                ([exp t]
-;;                 (pres {} exp t))
-;;                ([st-env exp t]
-;;                 (let [annotated-exp (annotate-exp
-;;                                      (into {} (map (fn [[variable [t _value]]] [variable t]) st-env)) exp)]
-;;                   (is (= t (annotated-type annotated-exp)))
-;;                   (is (= t (class (eval-annotated-exp
-;;                                    (into {} (map (fn [[variable [_t value]]] [variable value]) st-env)) annotated-exp)))))))]
-;;     (pres [:constant "abc"] String)
-;;     (pres [:constant 123] Long)
-
-;;     (pres [:class "java.lang.Long"] Class)
-
-;;     (pres [:construct "java.lang.Object"] Object)
-;;     (pres [:construct "java.lang.Long" [:constant "123"]] Long)
-;;     (pres [:construct "java.math.BigDecimal" [:constant "123"]] BigDecimal)
-
-;;     (pres [:invoke-static-method "java.lang.Long" "valueOf" [:constant "14"]] Long)
-
-;;     (pres [:invoke-instance-method [:constant 12] "toString"] String)
-
-;;     (pres [:get-static-field "java.time.Month" "JULY"] java.time.Month)
-
-;;     (pres [:get-instance-field [:construct "experimentation.java.PublicInstanceField"] "x"] Long)
-
-;;     (pres {:x [Long 42]} [:var :x] Long)))
+  (is (= 3 (eval-exp [:if [:constant true]
+                      [:upcast [:constant 3] [Number]]
+                      [:upcast [:constant 3.0] [Number]]])))
+  (is (= 3.0 (eval-exp [:if [:constant false]
+                        [:upcast [:constant 3] [Number]]
+                        [:upcast [:constant 3.0] [Number]]]))))

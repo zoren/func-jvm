@@ -103,7 +103,7 @@
 (comment
   (specialize-method
    (.getMethod java.lang.Long "getLong" (into-array Class [String Long])))
-
+  (empty? (.getTypeParameters (.getMethod java.lang.Long "getLong" (into-array Class [String Long]))))
   (specialize-method
    (.getMethod java.lang.Long "toHexString" (into-array Class [Long/TYPE])))
 
@@ -174,7 +174,27 @@
                                                       [(wrap-primitive-types t)]
                                                       (wrap-primitive-types t))} additionals))))
 
-;; nil, null?
+(defn try-get-method [error class-obj method-name arg-types]
+  (let [arity-methods (if class-obj
+                        (get-arity-methods class-obj method-name (count arg-types))
+                        [])]
+    (when class-obj
+      (case (count arity-methods)
+        0 (error :method-not-found)
+
+        1 (first arity-methods)
+
+        (let [type-filtered-methods
+              (filter (fn [method]
+                        (and
+                         (empty? (.getTypeParameters method))
+                         (every? (fn [[param ta]]
+                                   (= [(wrap-primitive-types (.getParameterizedType param))] (normalize ta)))
+                                 (map vector (.getParameters method) arg-types)))) arity-methods)]
+          (case (count type-filtered-methods)
+            0 (error :method-not-found {:arity arity-methods})
+            1 (first type-filtered-methods)
+            (error :ambiguous-method-signature {:method-candidates arity-methods})))))))
 
 (defn annotate-exp [symbol-table]
   (let [errors (atom [])
@@ -182,18 +202,6 @@
                 ([message] (error message {}))
                 ([message args] (swap! errors conj (assoc args :message message))
                  nil))
-        try-get-method
-        (fn [class-obj method-name args]
-          (let [arity-methods (if class-obj
-                                (get-arity-methods class-obj method-name (count args))
-                                [])]
-            (when class-obj
-              (case (count arity-methods)
-                0 (error :method-not-found)
-
-                1 (first arity-methods)
-
-                (error :ambiguous-method-signature {:method-candidates arity-methods})))))
         unify-message
         (fn [t1 t2 message]
           (try
@@ -201,6 +209,7 @@
             nil
             (catch clojure.lang.ExceptionInfo _e
               (error message {:t1 t1 :t2 t2}))))
+        try-get-method (partial try-get-method error)
         a-exp
         (fn a-exp [[kind & args :as exp]]
           (case kind
@@ -254,14 +263,14 @@
             (let [[class-name method-name & args] args
                   class-obj (try-get-class class-name)
                   _ (when-not class-obj (error :class-not-found {:name class-name}))
-                  method (try-get-method class-obj method-name args)
                   annotated-args (map a-exp args)
+                  arg-types (map annotated-type (map wrap-primitive-types annotated-args))
+                  method (try-get-method class-obj method-name arg-types)
+                  _ (when (and method (not (static? method))) (error :not-static {:member method}))
                   [param-types return-type]
                   (if method
-                    (do
-                      (when-not (static? method) (error :not-static {:member method}))
-                      (specialize-method method))
-                    [(map annotated-type (map wrap-primitive-types annotated-args)) Object])]
+                    (specialize-method method)
+                    [arg-types Object])]
               (doseq [[pt a-arg] (map vector param-types annotated-args)]
                 (unify-message (wrap-primitive-types pt) (annotated-type a-arg) :argument-type-no-match))
               (with-type (into [kind class-name method-name] annotated-args) return-type {:method method}))
@@ -269,14 +278,14 @@
             :invoke-instance-method
             (let [[instance-exp method-name & args] args
                   annotated-instance (a-exp instance-exp)
-                  method (try-get-method (first (annotated-type annotated-instance)) method-name args)
                   annotated-args (map a-exp args)
+                  arg-types (map annotated-type (map wrap-primitive-types annotated-args))
+                  method (try-get-method (first (annotated-type annotated-instance)) method-name arg-types)
+                  _ (when (and method (static? method)) (error :static {:member method}))
                   [param-types return-type]
                   (if method
-                    (do
-                      (when (static? method) (error :static {:member method}))
-                      (specialize-method method))
-                    [(map annotated-type (map wrap-primitive-types annotated-args)) Object])]
+                    (specialize-method method)
+                    [arg-types Object])]
               (doseq [[pt a-arg] (map vector param-types annotated-args)]
                 (unify-message (wrap-primitive-types pt) (annotated-type a-arg) :argument-type-no-match))
               (with-type (into [kind annotated-instance method-name] annotated-args) return-type {:method method}))
@@ -297,6 +306,7 @@
             (let [[exp t] args
                   annotated-exp (a-exp exp)
                   inferred-type (annotated-type annotated-exp)]
+              ;; TODO, check arity of type
               (when-not (unify/type? t) (error :not-a-type {:type t}))
               ;; todo what about type params/args?
               (when-not (.isAssignableFrom (first t) (first inferred-type))
@@ -382,7 +392,7 @@
     :if
     (let [[cond t f] args]
       (if (eval-annotated-exp env cond) (eval-annotated-exp env t) (eval-annotated-exp env f)))
-    :var
+    :variable
     (-> args first env)
 
     (throw (ex-info "unknown exp type" {:exp exp}))))
