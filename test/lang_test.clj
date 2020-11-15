@@ -14,8 +14,8 @@
 (defn t
   ([e] (t {} e))
   ([st e]
-   (let [{:keys [annotated-exp errors]} ((annotate-exp st) e)]
-     (when-not (empty? errors) (throw (ex-info "there where errors" {:errors errors})))
+   (let [error #(throw (ex-info "there where errors" {:error %}))
+         annotated-exp ((annotate-exp error) st e)]
      (-> annotated-exp
          annotated-type
          normalize
@@ -26,10 +26,19 @@
   (when-not (= (count s) 1) (throw (ex-info "expected one element" {:found s})))
   (first s))
 
+(defn t-error-list [symbol-table exp]
+  (let [errors-atom (atom [])
+        error (fn error
+                ([message] (error message {}))
+                ([message args] (swap! errors-atom conj (assoc args :message message))
+                 nil))
+        annotated-exp ((annotate-exp error) symbol-table exp)]
+    {:errors @errors-atom :annotated-exp annotated-exp}))
+
 (defn t-error
   ([e] (t-error {} e))
   ([st e]
-   (let [{:keys [errors]} ((annotate-exp st) e)]
+   (let [{:keys [errors]} (t-error-list st e)]
      (when (empty? errors) (throw (ex-info "no error" {})))
      (-> errors
          first!
@@ -164,7 +173,7 @@
   ([exp] (eval-exp {} exp))
   ([st-env exp]
    (let [st (into {} (map (fn [[variable [t _value]]] [variable t]) st-env))
-         {:keys [annotated-exp errors]} ((annotate-exp st) exp)
+         {:keys [annotated-exp errors]} (t-error-list st exp)
          _ (when-not (empty? errors) (throw (ex-info "there were errors" {:errors errors})))
          env (into {} (map (fn [[variable [_t value]]] [variable value]) st-env))]
      (eval-annotated-exp env annotated-exp))))
