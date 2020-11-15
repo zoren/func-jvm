@@ -218,4 +218,6 @@
                       [:upcast [:constant 3.0] [Number]]])))
   (is (= 3.0 (eval-exp [:if [:constant false]
                         [:upcast [:constant 3] [Number]]
-                        [:upcast [:constant 3.0] [Number]]]))))
+                        [:upcast [:constant 3.0] [Number]]])))
+  (is (= 5.0 (.apply (eval-exp [:function "x" [:variable "x"]]) 5.0)))
+  )

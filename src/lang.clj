@@ -324,8 +324,7 @@
                parameter-type (mk-type-var 0)
                annotated-body (a-exp (assoc symbol-table parameter parameter-type) body)
                result-type (annotated-type annotated-body)]
-           (prn parameter-type annotated-body result-type)
-           (with-type [kind [parameter parameter-type] annotated-body]
+           (with-type [kind parameter annotated-body]
              [java.util.function.Function parameter-type result-type]))
 
          (throw (ex-info "unknown exp type" {:exp exp})))))
@@ -400,7 +399,13 @@
     :if
     (let [[cond t f] args]
       (if (eval-annotated-exp env cond) (eval-annotated-exp env t) (eval-annotated-exp env f)))
+
     :variable
     (-> args first env)
+
+    :function
+    (let [[parameter body] args
+          f (fn [argument] (eval-annotated-exp (assoc env parameter argument) body))]
+      (fn->function f))
 
     (throw (ex-info "unknown exp type" {:exp exp}))))
