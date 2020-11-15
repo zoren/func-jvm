@@ -1,6 +1,6 @@
 (ns lang
   (:require
-   [unify :refer [mk-type-var unify normalize renumber]]
+   [unify :refer [mk-type-var unify normalize]]
    )
   )
 
@@ -327,7 +327,15 @@
            (with-type [kind parameter annotated-body]
              [java.util.function.Function parameter-type result-type]))
 
-         (throw (ex-info "unknown exp type" {:exp exp})))))
+         :invoke-function
+         (let [[func arg] args
+               [annotated-func annotated-arg] (map (partial a-exp symbol-table) [func arg])
+               [t-arg t-res] [(mk-type-var 0) (mk-type-var 0)]]
+           (unify-message [java.util.function.Function t-arg t-res] (annotated-type annotated-func) :not-a-function)
+           (unify-message t-arg (annotated-type annotated-arg) :argument-type-no-match)
+           (with-type [kind annotated-func annotated-arg] t-res))
+
+         (throw (ex-info "annotate-exp: unknown exp type" {:exp exp})))))
     ))
 
 ;; https://www.logicbig.com/how-to/code-snippets/jcode-reflection-class-isassignablefrom.html
@@ -408,4 +416,8 @@
           f (fn [argument] (eval-annotated-exp (assoc env parameter argument) body))]
       (fn->function f))
 
-    (throw (ex-info "unknown exp type" {:exp exp}))))
+    :invoke-function
+    (let [[func arg] args]
+      (.apply (eval-annotated-exp env func) (eval-annotated-exp env arg)))
+
+    (throw (ex-info "eval-exp: unknown exp type" {:exp exp}))))

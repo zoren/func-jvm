@@ -162,12 +162,22 @@
                [java.lang.Iterable [Long]]])))
     )
 
-  (testing ""
+  (testing "function"
     (is (= [java.util.function.Function :a [Long]]
            (t [:function "x" [:constant 4]])))
     (is (= [java.util.function.Function :a :a]
            (t [:function "x" [:variable "x"]]))))
-  )
+
+  (testing "function call"
+    (is (= :not-a-function (t-error [:invoke-function [:constant 5.0] [:constant 5.0]])))
+    (is (= :argument-type-no-match
+           (t-error [:invoke-function
+                     [:function "x"
+                      [:if [:constant true] [:constant 3] [:variable "x"]]]
+                     [:constant 5.0]])))
+
+    (is (= 5 (t [:invoke-function [:function "x" [:variable "x"]] [:constant 5]])))
+    ))
 
 (defn eval-exp
   ([exp] (eval-exp {} exp))
@@ -220,4 +230,6 @@
                         [:upcast [:constant 3] [Number]]
                         [:upcast [:constant 3.0] [Number]]])))
   (is (= 5.0 (.apply (eval-exp [:function "x" [:variable "x"]]) 5.0)))
+
+  (is (= 5.0 (eval-exp [:invoke-function [:function "x" [:variable "x"]] [:constant 5.0]])))
   )
