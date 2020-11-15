@@ -62,14 +62,18 @@
            (t-error [:get-static-field "java.time.Month" "noSuchField"])))
     (is (= :not-static
            (t-error [:get-static-field "experimentation.java.PublicInstanceField" "x"])))
-    (is (= java.time.Month (t [:get-static-field "java.time.Month" "JULY"]))))
+    (is (= java.time.Month (t [:get-static-field "java.time.Month" "JULY"])))
+    (is (= [java.util.function.Function [Long] [Long]]
+           (t [:get-static-field "experimentation.java.PublicInstanceField" "longId"]))))
 
   (testing "instance field"
     (is (= :static
            (t-error [:get-instance-field [:get-static-field "java.time.Month" "JULY"] "JULY"])))
     (is (= :field-not-found
            (t-error [:get-instance-field [:construct "experimentation.java.PublicInstanceField"] "noSuchField"])))
-    (is (= Long (t [:get-instance-field [:construct "experimentation.java.PublicInstanceField"] "x"]))))
+    (is (= Long (t [:get-instance-field [:construct "experimentation.java.PublicInstanceField"] "x"])))
+    (is (= [java.util.function.Function [Long] [Long]]
+           (t [:get-instance-field [:construct "experimentation.java.PublicInstanceField"] "instanceFuncField"]))))
 
   (testing "static method invocation"
     (is (= :class-not-found

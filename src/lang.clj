@@ -80,23 +80,28 @@
 
 (first (get-arity-methods java.lang.Long "getLong" 2))
 
+(defn specialize-type [mapping]
+  (fn type-> [t]
+    (cond
+      (instance? java.lang.reflect.TypeVariable t)
+      (mapping t)
+
+      (instance? java.lang.reflect.ParameterizedType t)
+      (into [(.getRawType ^java.lang.reflect.ParameterizedType t)]
+            (map type-> (.getActualTypeArguments ^java.lang.reflect.ParameterizedType t)))
+
+      (class? t)
+      [t]
+
+      :else
+      (throw (ex-info "specialize-method: unsupported type" {:t t :type (type t) :class? (class? t)})))))
+
+(def java-generic-type->type
+  (specialize-type #(throw (ex-info "type var not expected" {:tv %}))))
+
 (defn specialize-method [method]
   (let [m (into {} (map (fn [tp] [tp (mk-type-var 0)]) (.getTypeParameters method)))
-        type->
-        (fn type-> [t]
-          (cond
-            (instance? java.lang.reflect.TypeVariable t)
-            (m t)
-
-            (instance? java.lang.reflect.ParameterizedType t)
-            (into [(.getRawType ^java.lang.reflect.ParameterizedType t)]
-                  (map type-> (.getActualTypeArguments ^java.lang.reflect.ParameterizedType t)))
-
-            (class? t)
-            [t]
-
-            :else
-            (throw (ex-info "specialize-method: unsupported type" {:t t :type (type t) :class? (class? t)}))))]
+        type-> (specialize-type m)]
     [(map #(type-> (.getParameterizedType %)) (.getParameters method))
      (type-> (.getGenericReturnType method))]))
 
@@ -242,7 +247,7 @@
                           (let [field (try-get-field class-obj field-name)]
                             (when-not field (error :field-not-found))
                             field))
-                  t (if field (.getType field) Object)]
+                  t (if field (java-generic-type->type (.getGenericType field)) [Object])]
               (when (and field (not (static? field))) (error :not-static {:member field}))
               (with-type exp t {:class class-obj :field field}))
 
@@ -253,7 +258,7 @@
                   t (if field
                       (do
                         (when (static? field) (error :static))
-                        (.getType field))
+                        (java-generic-type->type (.getGenericType field)))
                       (do
                         (error :field-not-found)
                         Object))]

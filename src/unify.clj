@@ -113,11 +113,3 @@
   (unify [:map [:int] [:int]] [:map [:int] [:float]])
   (unify [java.util.Map tv0 tv0] [java.util.Map [java.lang.Long] tv1])
   )
-
-
-
-(defn specialize [type-vars t level]
-  )
-
-(defn generalize [t binding-level]
-  )
