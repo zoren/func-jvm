@@ -323,6 +323,15 @@
                                                    :inferred-type-arg inferred-type-arg})))
               (with-type annotated-exp t))
 
+            :function
+            (let [[parameter body] args
+                  parameter-type (mk-type-var 0)
+                  annotated-body ((annotate-exp (assoc symbol-table parameter parameter-type)) body)
+                  result-type (annotated-type (:annotated-exp annotated-body))]
+              (prn parameter-type annotated-body result-type)
+              (with-type [kind [parameter parameter-type] annotated-body]
+                [java.util.function.Function parameter-type result-type]))
+
             (throw (ex-info "unknown exp type" {:exp exp}))))
         ]
     (fn [e] {:annotated-exp (a-exp e) :errors @errors})

@@ -152,6 +152,12 @@
            (t [:upcast [:invoke-static-method "java.util.List" "of" [:constant 42]]
                [java.lang.Iterable [Long]]])))
     )
+
+  (testing ""
+    (is (= [java.util.function.Function :a [Long]]
+           (t [:function "x" [:constant 4]])))
+    (is (= [java.util.function.Function :a :a]
+           (t [:function "x" [:variable "x"]]))))
   )
 
 (defn eval-exp
