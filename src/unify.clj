@@ -34,9 +34,10 @@
     )
 
 (defn type-vars [t]
-  (if (vector? t)
-    (mapcat type-vars (rest t))
-    [t]))
+  (distinct
+   (if (vector? t)
+     (mapcat type-vars (rest t))
+     [t])))
 
 (defn map-type-vars [f t]
   ((fn m [t]
