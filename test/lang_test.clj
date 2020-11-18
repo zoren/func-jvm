@@ -196,14 +196,14 @@
            (t [:function "x" [:variable "x"]]))))
 
   (testing "function call"
-    (is (= :not-a-function (t-error [:invoke-function [:constant 5.0] [:constant 5.0]])))
+    (is (= :argument-type-no-match (t-error [:invoke-function [:constant 5.0] [:constant 5.0]])))
     (is (= :argument-type-no-match
            (t-error [:invoke-function
                      [:function "x"
                       [:if [:constant true] [:constant 3] [:variable "x"]]]
                      [:constant 5.0]])))
 
-    (is (= 5 (t [:invoke-function [:function "x" [:variable "x"]] [:constant 5]])))
+    (is (= Long (t [:invoke-function [:function "x" [:variable "x"]] [:constant 5]])))
     ))
 
 (defn eval-exp

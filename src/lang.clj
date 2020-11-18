@@ -344,9 +344,9 @@
          :invoke-function
          (let [[func arg] args
                [annotated-func annotated-arg] (map (partial a-exp symbol-table) [func arg])
-               [t-arg t-res] [(mk-type-var 0) (mk-type-var 0)]]
-           (unify-message [java.util.function.Function t-arg t-res] (annotated-type annotated-func) :not-a-function)
-           (unify-message t-arg (annotated-type annotated-arg) :argument-type-no-match)
+               t-res (mk-type-var 0)]
+           (unify-message [java.util.function.Function (annotated-type annotated-arg) t-res]
+                          (annotated-type annotated-func) :argument-type-no-match)
            (with-type [kind annotated-func annotated-arg] t-res))
 
          (throw (ex-info "annotate-exp: unknown exp type" {:exp exp})))))
