@@ -222,6 +222,9 @@
 
       (with-type (into [class-name] annotated-args) (into [class-obj] (map annotated-type annotated-args))))))
 
+;; https://www.logicbig.com/how-to/code-snippets/jcode-reflection-class-isassignablefrom.html
+;; Object[] isAssignableFrom Integer[]: true
+
 (defn assert-sub-type [error]
   (fn ass [[syntactic-type & syntactic-type-args] [inferred-type & inferred-type-args]]
     (when-not (.isAssignableFrom syntactic-type inferred-type)
@@ -352,41 +355,10 @@
          (throw (ex-info "annotate-exp: unknown exp type" {:exp exp})))))
     ))
 
-;; https://www.logicbig.com/how-to/code-snippets/jcode-reflection-class-isassignablefrom.html
-;; Object[] isAssignableFrom Integer[]: true
-
-;; (comment
-;;   (annotate-exp {} [:invoke-static-method "java.util.List" "of" [:constant 42] [:constant "abc"]])
-;;   (renumber
-;;    (normalize (annotated-type (annotate-exp {} [:invoke-static-method "java.util.List" "of"]))))
-;;   (renumber
-;;    (normalize (annotated-type (annotate-exp {} [:invoke-static-method "java.util.List" "of" [:constant 42] [:constant 45]]))))
-
-;;   )
-
 (defn fn->function [f]
   (reify java.util.function.Function
     (apply [this a]
       (f a))))
-
-;; :fn
-;; (let [[fn-params body] args
-;;       a-body (annotate-exp (into symbol-table fn-params) body)]
-;;   (with-type (annotate-exp (into symbol-table fn-params) body)
-;;     ()
-;;     )
-;;   )
-
-;; (class java.util.function.Function)
-;; java.util.function.Function
-
-
-;; (-> [2]
-;;     .stream
-;;     (.map (fn->function #(* % 5)))
-;;     (.collect (java.util.stream.Collectors/toList))
-;;     )
-
 
 (defn eval-annotated-exp [env [kind & args :as exp]]
   (case kind
