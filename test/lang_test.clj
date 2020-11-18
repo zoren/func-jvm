@@ -1,10 +1,41 @@
 (ns lang-test
   (:require
    [clojure.test :refer [deftest is testing]]
-   [lang :refer [annotate-exp eval-annotated-exp annotated-type]]
+   [lang :refer [annotate-exp eval-annotated-exp annotated-type annotate-type]]
    [unify :refer [normalize renumber]]
    )
   )
+
+(defn first! [s]
+  (when-not (= (count s) 1) (throw (ex-info "expected one element" {:found s})))
+  (first s))
+
+(defn mk-error-lister []
+  (let [errors-atom (atom [])]
+    {:errors-atom errors-atom :error (fn error
+                                       ([message] (error message {}))
+                                       ([message args] (swap! errors-atom conj (assoc args :message message))
+                                        nil))}))
+
+(defn at [t] (annotated-type ((annotate-type #(throw (ex-info %1 %2))) t)))
+
+(defn at-error [t]
+  (let [{:keys [error errors-atom]} (mk-error-lister)]
+    (annotated-type ((annotate-type error) t))
+    (-> @errors-atom first :message)))
+
+(deftest annotate-type-test
+  (is (= :class-not-found (at-error ["NoSuchClass"])))
+  (is (= :type-arity-mismatch (at-error ["java.lang.Number" ["java.lang.Number"]])))
+  (is (= :class-not-found (at-error ["java.util.Collection" ["NoSuchClass"]])))
+  (is (= :type-arity-mismatch (at-error ["java.util.Collection"])))
+
+  (is (= [Number] (at ["java.lang.Number"])))
+  (is (= [String] (at ["java.lang.String"])))
+  (is (= [java.util.Collection [java.lang.Long]] (at ["java.util.Collection" ["java.lang.Long"]])))
+  (is (= [java.lang.Iterable [java.lang.Long]] (at ["java.lang.Iterable" ["java.lang.Long"]])))
+  (is (= [java.util.Map [java.lang.Long] [java.lang.String]]
+         (at ["java.util.Map" ["java.lang.Long"] ["java.lang.String"]]))))
 
 (defn unwrap-singleton [s]
   (if (= (count s) 1)
@@ -21,10 +52,6 @@
          normalize
          renumber
          unwrap-singleton))))
-
-(defn first! [s]
-  (when-not (= (count s) 1) (throw (ex-info "expected one element" {:found s})))
-  (first s))
 
 (defn t-error-list [symbol-table exp]
   (let [errors-atom (atom [])
@@ -140,26 +167,26 @@
     (is (= String (t {:x [String]} [:variable :x]))))
 
   (testing "upcast annotation"
-    (is (= :upcast-invalid (t-error [:upcast [:constant 5] [String]])))
-    (is (= :upcast-invalid (t-error [:upcast [:constant ""] [Number]])))
-    (is (= :upcast-invalid (t-error [:upcast [:constant (Object.)] [Number]])))
-    (is (= :upcast-invalid (t-error [:upcast [:upcast [:constant 3] [Number]] [Long]])))
-    (is (= :upcast-invalid (t-error [:upcast [:upcast [:constant 3] [Number]] [Long]])))
-    (is (= :upcast-invalid-type-arg
+    (is (= :upcast-invalid (t-error [:upcast [:constant 5] ["java.lang.String"]])))
+    (is (= :upcast-invalid (t-error [:upcast [:constant ""] ["java.lang.Number"]])))
+    (is (= :upcast-invalid (t-error [:upcast [:constant (Object.)] ["java.lang.Number"]])))
+    (is (= :upcast-invalid (t-error [:upcast [:upcast [:constant 3] ["java.lang.Number"]] ["java.lang.Long"]])))
+    (is (= :upcast-invalid (t-error [:upcast [:upcast [:constant 3] ["java.lang.Number"]] ["java.lang.Long"]])))
+    (is (= :upcast-invalid
            (t-error [:upcast [:invoke-static-method "java.util.List" "of" [:constant 42]]
-                     [java.util.List [String]]])))
+                     ["java.util.List" ["java.lang.String"]]])))
 
-    (is (= Number (t [:upcast [:constant 3] [Number]])))
-    (is (= Number (t [:upcast [:constant 3.0] [Number]])))
+    (is (= Number (t [:upcast [:constant 3] ["java.lang.Number"]])))
+    (is (= Number (t [:upcast [:constant 3.0] ["java.lang.Number"]])))
     (is (= Number (t [:if [:constant true]
-                      [:upcast [:constant 3] [Number]]
-                      [:upcast [:constant 3.0] [Number]]])))
+                      [:upcast [:constant 3] ["java.lang.Number"]]
+                      [:upcast [:constant 3.0] ["java.lang.Number"]]])))
     (is (= [java.util.Collection [Long]]
            (t [:upcast [:invoke-static-method "java.util.List" "of" [:constant 42]]
-               [java.util.Collection [Long]]])))
+               ["java.util.Collection" ["java.lang.Long"]]])))
     (is (= [java.lang.Iterable [Long]]
            (t [:upcast [:invoke-static-method "java.util.List" "of" [:constant 42]]
-               [java.lang.Iterable [Long]]])))
+               ["java.lang.Iterable" ["java.lang.Long"]]])))
     )
 
   (testing "function"
@@ -224,11 +251,11 @@
   (is (= "abc" (eval-exp {:x [String "abc"]} [:variable :x])))
 
   (is (= 3 (eval-exp [:if [:constant true]
-                      [:upcast [:constant 3] [Number]]
-                      [:upcast [:constant 3.0] [Number]]])))
+                      [:upcast [:constant 3] ["java.lang.Number"]]
+                      [:upcast [:constant 3.0] ["java.lang.Number"]]])))
   (is (= 3.0 (eval-exp [:if [:constant false]
-                        [:upcast [:constant 3] [Number]]
-                        [:upcast [:constant 3.0] [Number]]])))
+                        [:upcast [:constant 3] ["java.lang.Number"]]
+                        [:upcast [:constant 3.0] ["java.lang.Number"]]])))
   (is (= 5.0 (.apply (eval-exp [:function "x" [:variable "x"]]) 5.0)))
 
   (is (= 5.0 (eval-exp [:invoke-function [:function "x" [:variable "x"]] [:constant 5.0]])))

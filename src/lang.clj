@@ -208,6 +208,27 @@
     (catch clojure.lang.ExceptionInfo _e
       (error message {:t1 t1 :t2 t2}))))
 
+(defn annotate-type [error]
+  (fn a-type [t]
+    (when (or (not (vector? t)) (empty? t))
+      (throw (ex-info "annotate-type: unknown type format" {:type t})))
+    (let [[class-name & args] t
+          class-obj (try-get-class class-name)
+          _ (if class-obj
+              (when-not (= (count (.getTypeParameters class-obj)) (count args))
+                (error :type-arity-mismatch {:params (.getTypeParameters class-obj) :args args}))
+              (error :class-not-found {:name class-name}))
+          annotated-args (map a-type args)]
+
+      (with-type (into [class-name] annotated-args) (into [class-obj] (map annotated-type annotated-args))))))
+
+(defn assert-sub-type [error]
+  (fn ass [[syntactic-type & syntactic-type-args] [inferred-type & inferred-type-args]]
+    (when-not (.isAssignableFrom syntactic-type inferred-type)
+      (error :upcast-invalid {:inferred-type inferred-type :upcast-type syntactic-type}))
+    (doseq [[type-arg inferred-type-arg] (map vector syntactic-type-args inferred-type-args)]
+      (ass type-arg inferred-type-arg))))
+
 (defn annotate-exp [error]
   (let [unify-message (partial unify-message error)
         try-get-method (partial try-get-method error)]
@@ -306,18 +327,11 @@
          :upcast
          (let [[exp t] args
                annotated-exp (a-exp symbol-table exp)
-               inferred-type (annotated-type annotated-exp)]
-           ;; TODO, check arity of type
-           (when-not (unify/type? t) (error :not-a-type {:type t}))
-           ;; todo what about type params/args?
-           (when-not (.isAssignableFrom (first t) (first inferred-type))
-             (error :upcast-invalid {:inferred-type inferred-type :upcast-type t}))
-           ;; todo this won't work generally, we need a general subtyping concept as in java
-           (doseq [[type-arg inferred-type-arg] (map vector (rest t) (rest inferred-type))]
-             (when-not (.isAssignableFrom (first type-arg) (first (normalize inferred-type-arg)))
-               (error :upcast-invalid-type-arg {:type-arg type-arg
-                                                :inferred-type-arg inferred-type-arg})))
-           (with-type annotated-exp t))
+               ann-type ((annotate-type error) t)
+               syntactic-type (annotated-type ann-type)
+               inferred-type (normalize (annotated-type annotated-exp))]
+           ((assert-sub-type error) syntactic-type inferred-type)
+           (with-type annotated-exp syntactic-type))
 
          :function
          (let [[parameter body] args
