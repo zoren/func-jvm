@@ -3,6 +3,7 @@
    [clojure.test :refer [deftest is testing]]
    [lang :refer [annotate-exp eval-annotated-exp annotated-type annotate-type]]
    [unify :refer [normalize renumber]]
+   [antlr :refer [parse-csl-exp]]
    )
   )
 
@@ -73,6 +74,49 @@
      (-> errors
          first!
          :message))))
+
+(defn pt
+  ([s] (pt {} s))
+  ([st s] (t st (-> s parse-csl-exp))))
+
+(deftest parse-annotated-exp-test
+  (testing "constant"
+    (is (=  (pt "9223372036854775808")))
+
+    (is (= Boolean (pt "true")))
+    (is (= Boolean (pt "false")))
+    (is (= Long (pt "0")))
+    (is (= Long (pt "1")))
+    (is (= Long (pt "123")))
+
+    (is (= BigDecimal (pt "0.0")))
+    (is (= BigDecimal (pt "1.23")))
+    (is (= BigDecimal (pt "12.46")))
+    (is (= BigDecimal (pt "1e6")))
+    (is (= BigDecimal (pt "1E10")))
+    (is (= BigDecimal (pt "1E-3")))
+    (is (= BigDecimal (pt "1.234E3")))
+
+    #_(is (=  (pt "5a")))
+    (is (= String (pt "\"\"")))
+    (is (= java.time.Instant (pt "#2020-01-01T00:00:00Z#")))
+    (is (= java.time.Duration (pt "#P1DT2H3M4S#")))
+    (is (= java.time.Duration (pt "#-PT42.314S#")))
+    (is (= {:clj-antlr/position {:row 0 :column 0 :index 0},
+            :original-string "5"
+            :type [java.lang.Long]} (meta ((annotate-exp throw-error) {} (parse-csl-exp "5"))))))
+
+  (testing "variable"
+    (is (= String (pt {"x" [String]} "x")))
+    (is (= Long (pt {["M" "x"] [Long]} "M::x"))))
+
+  (testing "if"
+    (is (= Long (pt "if (true) 3 else 5"))))
+
+  (testing "upcast"
+    (is (= Number (pt "4 :> java.lang.Number")))
+    (is (= Number (pt "4.5 :> java.lang.Number"))))
+  )
 
 (deftest annotate-exp-test
   (testing "constant"

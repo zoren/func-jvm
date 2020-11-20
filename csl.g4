@@ -4,10 +4,15 @@ source_text
     : top_level_decl* EOF
 ;
 
+expression_eof : expression EOF;
+type_eof : type EOF;
+
 top_level_decl
-    : decl
+    : 'val' pattern '=' expression
     | 'type' UPPER_IDENTIFIER type_kind
 ;
+
+val_decl : 'val' pattern '=' expression;
 
 type_decl_field : LOWER_IDENTIFIER ':' type;
 
@@ -16,68 +21,71 @@ type_kind
     | (':' qualified_upper)? '{' (type_decl_field (',' type_decl_field)*)? '}'
 ;
 
-decl
-    : 'val' pattern '=' expression
-;
+integer : INTEGER;
+float : FLOAT;
 
 constant
-    : NUMBER
+    : 'true'
+    | 'false'
+    | integer
+    | float
     | STRING
     | POUND_CONSTANT
 ;
 
 type
-    : qualified_upper type*
+    : java_qualified type*
     | LOWER_IDENTIFIER
     | '(' type ')'
     | type '->' type
     ;
 
+wildcard : '_';
+
+pattern_identifier : LOWER_IDENTIFIER;
+
 pattern
-    : '_'
+    : wildcard
     | constant
-    | LOWER_IDENTIFIER
-    | qualified_upper
-    | pattern pattern
+    | pattern_identifier
+    | qualified_upper pattern*
     | '(' (pattern (',' pattern)*)? ')'
     | '[' (pattern (',' pattern)*)? ']'
     | pattern ':' type
 ;
 
+variable : qualified_lower;
+
+if : 'if' '(' expression ')' expression 'else' expression;
+
 expression
-    : 'if' '(' expression ')' expression 'else' expression
-    | '\\' pattern '->' expression ('|' pattern '->' expression)*
-    | 'let' decl+ 'in' expression
-    | constant
+    : constant
     | qualified_upper
-    | qualified_lower
+    | variable
+    | if
+    | '\\' pattern '->' expression ('|' pattern '->' expression)*
+    | 'let' val_decl+ 'in' expression
     | '(' (expression (',' expression)*)? ')'
     | '[' (expression (',' expression)*)? ']'
     | '-' expression
     | expression ('*' | '/') expression
     | expression ('+' | '-') expression
     | expression ('<=' | '>=' | '<' | '>' | '=') expression
-    | expression ('&&' | '||') expression
+    | expression ('&&' | '||') expression // remember r-assoc
     | expression expression
     | expression '.' LOWER_IDENTIFIER
+    | expression ':>' t=type
 ;
 
 qualified_lower : (UPPER_IDENTIFIER '::')* LOWER_IDENTIFIER;
 qualified_upper : (UPPER_IDENTIFIER '::')* UPPER_IDENTIFIER;
+java_qualified : JAVA_QUALIFIED;
+JAVA_QUALIFIED : ([a-z]+.)+[A-Z][a-z]*;
 
-POUND_CONSTANT : '#' ~('#')* '#';
+POUND_CONSTANT : '#' ~('#')+ '#';
 
 LOWER_IDENTIFIER : [a-z][a-zA-Z0-9]*;
 UPPER_IDENTIFIER : [A-Z][a-zA-Z0-9]*;
-
-fragment
-INT
-  : '0'..'9'+
-;
-
-NUMBER
-  : '-'? ('0' | ( '1'..'9' INT* )) ('.' INT+)? EXPONENT?
-;
 
 LineComment
     :   '//' ~[\r\n]*
@@ -92,18 +100,31 @@ WS
   ) -> channel(HIDDEN)
 ;
 
+INTEGER: '-'? [0-9]+;
+
+FLOAT
+    : '-'? [0-9]+ FLOAT_TAIL
+    ;
+
+fragment
+FLOAT_TAIL
+    : FLOAT_DECIMAL FLOAT_EXP
+    | FLOAT_DECIMAL
+    | FLOAT_EXP
+    ;
+
+fragment
+FLOAT_DECIMAL
+    : '.' [0-9]+
+    ;
+
+fragment
+FLOAT_EXP
+    : [eE] '-'? [0-9]+
+    ;
+
 STRING
   : '"' ( ESC_SEQ | ~('\\'|'"') )* '"'
-;
-
-fragment
-EXPONENT
-  : ('e'|'E') ('+'|'-')? ('0'..'9')+
-;
-
-fragment
-HEX_DIGIT
-  : ('0'..'9'|'a'..'f'|'A'..'F')
 ;
 
 fragment
@@ -115,4 +136,9 @@ ESC_SEQ
 fragment
 UNICODE_ESC
   : '\\' 'u' HEX_DIGIT HEX_DIGIT HEX_DIGIT HEX_DIGIT
+;
+
+fragment
+HEX_DIGIT
+  : ('0'..'9'|'a'..'f'|'A'..'F')
 ;
