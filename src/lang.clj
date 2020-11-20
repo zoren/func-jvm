@@ -175,9 +175,9 @@
 
 (defn with-type
   ([exp t] (with-type exp t nil))
-  ([exp t additionals] (with-meta exp (merge {:type (if (class? t)
-                                                      [(wrap-primitive-types t)]
-                                                      (wrap-primitive-types t))} additionals))))
+  ([exp t additionals] (vary-meta exp #(merge % {:type (if (class? t)
+                                                         [(wrap-primitive-types t)]
+                                                         (wrap-primitive-types t))} additionals))))
 
 (defn try-get-method [error class-obj method-name arg-types]
   (let [arity-methods (if class-obj
