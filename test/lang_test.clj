@@ -17,7 +17,11 @@
                                        ([message args] (swap! errors-atom conj (assoc args :message message))
                                         nil))}))
 
-(defn at [t] (annotated-type ((annotate-type #(throw (ex-info %1 %2))) t)))
+(defn throw-error
+  ([m] (throw-error m {}))
+  ([m a] (throw (ex-info (name m) a))))
+
+(defn at [t] (annotated-type ((annotate-type throw-error) t)))
 
 (defn at-error [t]
   (let [{:keys [error errors-atom]} (mk-error-lister)]
@@ -45,8 +49,7 @@
 (defn t
   ([e] (t {} e))
   ([st e]
-   (let [error #(throw (ex-info "there where errors" {:error %}))
-         annotated-exp ((annotate-exp error) st e)]
+   (let [annotated-exp ((annotate-exp throw-error) st e)]
      (-> annotated-exp
          annotated-type
          normalize
@@ -210,8 +213,7 @@
   ([exp] (eval-exp {} exp))
   ([st-env exp]
    (let [st (into {} (map (fn [[variable [t _value]]] [variable t]) st-env))
-         {:keys [annotated-exp errors]} (t-error-list st exp)
-         _ (when-not (empty? errors) (throw (ex-info "there were errors" {:errors errors})))
+         annotated-exp ((annotate-exp throw-error) st exp)
          env (into {} (map (fn [[variable [_t value]]] [variable value]) st-env))]
      (eval-annotated-exp env annotated-exp))))
 
