@@ -127,6 +127,9 @@
   (testing "parens"
     (is (= Long (pt "5")))
     (is (= [java.util.function.Function :a :a] (pt "(\\x -> x)"))))
+
+  (testing "function apply"
+    (is (= Long (pt "(\\x -> x) 5"))))
   )
 
 (deftest annotate-exp-test

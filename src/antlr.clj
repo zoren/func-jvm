@@ -73,6 +73,9 @@
 
     :expression
     (case (count total)
+      3
+      (let [[_ t1 t2] total]
+        [:invoke-function (convert-csl-exp t1) (convert-csl-exp t2)])
       4
       (let [[_ t1 s t2] total]
         (case s
