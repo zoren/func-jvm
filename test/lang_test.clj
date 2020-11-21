@@ -81,10 +81,10 @@
 
 (deftest parse-annotated-exp-test
   (testing "constant"
-    #_    (is (=  (pt "9223372036854775808"))) ;; error then number is larger than
-
     (is (= Boolean (pt "true")))
     (is (= Boolean (pt "false")))
+
+    #_    (is (=  (pt "9223372036854775808"))) ;; error then number is larger than
     (is (= Long (pt "0")))
     (is (= Long (pt "1")))
     (is (= Long (pt "123")))
@@ -99,7 +99,10 @@
 
     #_(is (=  (pt "5a")))
     (is (= String (pt "\"\"")))
+    (is (= String (pt "\"abc\"")))
+
     (is (= java.time.Instant (pt "#2020-01-01T00:00:00Z#")))
+
     (is (= java.time.Duration (pt "#P1DT2H3M4S#")))
     (is (= java.time.Duration (pt "#-PT42.314S#")))
     (is (= {:clj-antlr/position {:row 0 :column 0 :index 0}
@@ -266,6 +269,18 @@
 
     (is (= Long (t [:invoke-function [:function [:pattern-identifier "x"] [:variable "x"]] [:constant 5]])))))
 
+(defn normalize-env [env]
+  (into {} (map (juxt key (comp normalize val)) env)))
+
+(defn parse-annotate-tld [s]
+  ((lang/annotate-top-level-decls throw-error) {} (antlr/parse-top-level s)))
+
+(deftest annotate-decls
+  (is (= {"x" [Long] "y" [Long]}
+         (-> "
+val x = 5
+val y = x" parse-annotate-tld first normalize-env))))
+
 (defn eval-exp
   ([exp] (eval-exp {} exp))
   ([st-env exp]
@@ -319,3 +334,10 @@
 
   (is (= 5.0 (eval-exp [:invoke-function [:function [:pattern-identifier "x"] [:variable "x"]] [:constant 5.0]])))
   )
+
+(deftest eval-decls-test
+  (is (= {"x" 5 "y" 5 "z" 6}
+         (lang/eval-decls {} (-> "
+val x = 5
+val y = x
+val z = (\\v -> 6) y" parse-annotate-tld second)))))

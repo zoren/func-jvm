@@ -8,7 +8,7 @@ expression_eof : expression EOF;
 type_eof : type EOF;
 
 top_level_decl
-    : 'val' pattern '=' expression
+    : val_decl
     | 'type' UPPER_IDENTIFIER type_kind
 ;
 
@@ -80,7 +80,7 @@ expression
     | expression ('&&' | '||') expression // remember r-assoc
     | expression expression
     | expression '.' LOWER_IDENTIFIER
-    | expression ':>' t=type
+    | expression ':>' type
 ;
 
 qualified_lower : (UPPER_IDENTIFIER '::')* LOWER_IDENTIFIER;

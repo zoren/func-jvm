@@ -365,6 +365,25 @@
          (throw (ex-info "annotate-exp: unknown exp type" {:exp exp})))))
     ))
 
+(defn annotate-top-level-decl [error]
+  (let [a-pat (annotate-pattern error)
+        a-exp (annotate-exp error)]
+    (fn [symbol-table [kind & args]]
+      (case kind
+        :val-decl
+        (let [[pattern exp] args
+              [symbol-table1 annotated-pattern] (a-pat symbol-table pattern)
+              annotated-exp (a-exp symbol-table1 exp)]
+          (unify-message error (annotated-type annotated-exp) (annotated-type annotated-pattern) :val-definitions-differ)
+          [symbol-table1 [:val-decl annotated-pattern annotated-exp]])))))
+
+(defn annotate-top-level-decls [error]
+  (let [a-tld (annotate-top-level-decl error)]
+    (fn [symbol-table tlds]
+      (reduce (fn [[st tlds] tld]
+                (let [[st1 annotated-tld] (a-tld st tld)]
+                  [st1 (conj tlds annotated-tld)])) [symbol-table []] tlds))))
+
 (defn fn->function [f]
   (reify java.util.function.Function
     (apply [this a]
@@ -414,7 +433,9 @@
 
       :if
       (let [[cond t f] args]
-        (if (eval-annotated-exp env cond) (eval-annotated-exp env t) (eval-annotated-exp env f)))
+        (if (eval-annotated-exp env cond)
+          (eval-annotated-exp env t)
+          (eval-annotated-exp env f)))
 
       :variable
       (-> args first env)
@@ -430,3 +451,15 @@
         (.apply (eval-annotated-exp env func) (eval-annotated-exp env arg)))
 
       (throw (ex-info "eval-exp: unknown exp type" {:exp exp})))))
+
+(defn eval-decl [env [kind & args]]
+  (case kind
+    :val-decl
+    (let [[pattern expression] args
+          updater (eval-annotated-pattern pattern)
+          a-exp (eval-annotated-exp env expression)]
+      (updater env a-exp))
+
+    (throw (ex-info "eval-decl: unknown decl type" {:kind kind :args args}))))
+
+(defn eval-decls [env decls] (reduce eval-decl env decls))

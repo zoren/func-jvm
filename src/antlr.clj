@@ -101,6 +101,14 @@
     (throw (ex-info "convert-csl-exp: unknown exp type" {:args args :c (count input)}))
     ))
 
+(defn convert-tld [[_ [kind & args :as input] :as total]]
+  (case kind
+    :val_decl
+    (let [[_val pat _eq exp] args]
+      (with-meta [:val-decl (convert-pattern pat) (convert-csl-exp exp)] (meta input)))))
+
 (def antlr-parse-csl-exp (a/parser "csl.g4" {:root "expression_eof"}))
 (defn parse-csl-exp [s] (-> s antlr-parse-csl-exp second convert-csl-exp))
 
+(def top-level-parser (a/parser "csl.g4"))
+(defn parse-top-level [s] (map convert-tld (-> s top-level-parser butlast rest)))
