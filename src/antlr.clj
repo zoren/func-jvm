@@ -38,8 +38,10 @@
   (cond
     (= (ffirst t) :java_qualified)
     (into [(-> t first second)] (map convert-type (rest t)))
-    )
-  )
+
+    :else
+    (throw (ex-info "convert-type: unknown exp type" {}))))
+
 (def antlr-parse-csl-type (a/parser "csl.g4" {:root "type_eof"}))
 (-> "java.lang.A" antlr-parse-csl-type rest butlast first convert-type)
 ;;(-> "A B" antlr-parse-csl-type rest butlast first convert-type)
@@ -49,7 +51,9 @@
   (case kind
     :pattern_identifier
     (let [[var] args]
-      (with-meta [:pattern-identifier var] (meta input)))))
+      (with-meta [:pattern-identifier var] (meta input)))
+
+    (throw (ex-info "convert-pattern: unknown exp type" {}))))
 
 (defn- convert-csl-exp [[_ [kind & args :as input] :as total]]
   (case kind
@@ -79,7 +83,6 @@
     :lambda
     (let [[_backslash & cases] args]
       (when (< 1 (count cases)) (throw (ex-info "only one case supported for now" {:cases cases})))
-      (prn cases)
       (let [case (first cases)
             [_ pat _arrow body] case
             cpat (convert-pattern pat)
