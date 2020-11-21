@@ -116,6 +116,13 @@
   (testing "upcast"
     (is (= Number (pt "4 :> java.lang.Number")))
     (is (= Number (pt "4.5 :> java.lang.Number"))))
+
+  (testing "lambda"
+    (is (= [java.util.function.Function :a :a] (pt "\\x -> x")))
+    (is (= [java.util.function.Function :a [Long]] (pt "\\x -> 5")))
+    (is (= [java.util.function.Function [Long] [Long]] (pt "\\x -> if (true) x else 5")))
+    (is (= [java.util.function.Function :a [java.util.function.Function :b :a]]
+           (pt "\\x -> \\y -> x"))))
   )
 
 (deftest annotate-exp-test
@@ -238,20 +245,19 @@
 
   (testing "function"
     (is (= [java.util.function.Function :a [Long]]
-           (t [:function "x" [:constant 4]])))
+           (t [:function [:pattern-identifier "x"] [:constant 4]])))
     (is (= [java.util.function.Function :a :a]
-           (t [:function "x" [:variable "x"]]))))
+           (t [:function [:pattern-identifier "x"] [:variable "x"]]))))
 
   (testing "function call"
     (is (= :argument-type-no-match (t-error [:invoke-function [:constant 5.0] [:constant 5.0]])))
     (is (= :argument-type-no-match
            (t-error [:invoke-function
-                     [:function "x"
+                     [:function [:pattern-identifier "x"]
                       [:if [:constant true] [:constant 3] [:variable "x"]]]
                      [:constant 5.0]])))
 
-    (is (= Long (t [:invoke-function [:function "x" [:variable "x"]] [:constant 5]])))
-    ))
+    (is (= Long (t [:invoke-function [:function [:pattern-identifier "x"] [:variable "x"]] [:constant 5]])))))
 
 (defn eval-exp
   ([exp] (eval-exp {} exp))
@@ -302,7 +308,7 @@
   (is (= 3.0 (eval-exp [:if [:constant false]
                         [:upcast [:constant 3] ["java.lang.Number"]]
                         [:upcast [:constant 3.0] ["java.lang.Number"]]])))
-  (is (= 5.0 (.apply (eval-exp [:function "x" [:variable "x"]]) 5.0)))
+  (is (= 5.0 (.apply (eval-exp [:function [:pattern-identifier "x"] [:variable "x"]]) 5.0)))
 
-  (is (= 5.0 (eval-exp [:invoke-function [:function "x" [:variable "x"]] [:constant 5.0]])))
+  (is (= 5.0 (eval-exp [:invoke-function [:function [:pattern-identifier "x"] [:variable "x"]] [:constant 5.0]])))
   )

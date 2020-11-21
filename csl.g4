@@ -46,24 +46,28 @@ pattern_identifier : LOWER_IDENTIFIER;
 
 pattern
     : wildcard
-    | constant
     | pattern_identifier
+    | pattern ':' type
+    | constant
     | qualified_upper pattern*
     | '(' (pattern (',' pattern)*)? ')'
     | '[' (pattern (',' pattern)*)? ']'
-    | pattern ':' type
 ;
 
 variable : qualified_lower;
 
 if : 'if' '(' expression ')' expression 'else' expression;
 
+lambda_case : pattern '->' expression;
+
+lambda : '\\' lambda_case ('|' lambda_case)*;
+
 expression
     : constant
     | qualified_upper
     | variable
     | if
-    | '\\' pattern '->' expression ('|' pattern '->' expression)*
+    | lambda
     | 'let' val_decl+ 'in' expression
     | '(' (expression (',' expression)*)? ')'
     | '[' (expression (',' expression)*)? ']'

@@ -45,6 +45,12 @@
 ;;(-> "A B" antlr-parse-csl-type rest butlast first convert-type)
 (type '(:type (:qualified_upper "I") (:type (:qualified_upper "A"))))
 
+(defn convert-pattern [[_pattern [kind & args :as input]]]
+  (case kind
+    :pattern_identifier
+    (let [[var] args]
+      (with-meta [:pattern-identifier var] (meta input)))))
+
 (defn- convert-csl-exp [[_ [kind & args :as input] :as total]]
   (case kind
     :constant
@@ -70,11 +76,21 @@
           ))
       )
 
+    :lambda
+    (let [[_backslash & cases] args]
+      (when (< 1 (count cases)) (throw (ex-info "only one case supported for now" {:cases cases})))
+      (prn cases)
+      (let [case (first cases)
+            [_ pat _arrow body] case
+            cpat (convert-pattern pat)
+            cbody (convert-csl-exp body)]
+        (with-meta [:function cpat cbody] (meta input))))
+
     (throw (ex-info "convert-csl-exp: unknown exp type" {:args args :c (count input)}))
     ))
 
 (def antlr-parse-csl-exp (a/parser "csl.g4" {:root "expression_eof"}))
-(defn parse-csl-exp [s] (-> s antlr-parse-csl-exp rest butlast first convert-csl-exp))
+(defn parse-csl-exp [s] (-> s antlr-parse-csl-exp second convert-csl-exp))
 
 (comment
   (let [[_ e1 op e2] (-> "v :> I" antlr-parse-csl-exp rest butlast first)
@@ -85,12 +101,9 @@
   (convert-csl-exp '(:expression (:variable (:qualified_lower "v"))))
   (-> "if (true) 2 else 3" parse-csl-exp)
   (-> "v" parse-csl-exp)
-  (-> "v" antlr-parse-csl-exp rest butlast first convert-csl-exp)
-  (-> "v :> I A" antlr-parse-csl-exp rest butlast first)
-  (-> "v :> I" parse-csl-exp)
+  (-> "v" antlr-parse-csl-exp second convert-csl-exp)
   (-> "3+2" antlr-parse-csl-exp)
   (-> "3*2" antlr-parse-csl-exp)
-  (-> "5" parse-csl-exp)
   (-> "5" parse-csl-exp)
   (-> "5e3" parse-csl-exp)
   (-> "true true" antlr-parse-csl-exp)

@@ -232,9 +232,20 @@
     (doseq [[type-arg inferred-type-arg] (map vector syntactic-type-args inferred-type-args)]
       (ass type-arg inferred-type-arg))))
 
+(defn annotate-pattern [error]
+  (fn a-pattern [symbol-table [kind & args]]
+    (case kind
+      :pattern-identifier
+      (let [[id] args
+            parameter-type (mk-type-var 0)]
+        (when (symbol-table id) (error :id-already-bound))
+        [(assoc symbol-table id parameter-type)
+         (with-type [kind id] parameter-type)]))))
+
 (defn annotate-exp [error]
   (let [unify-message (partial unify-message error)
-        try-get-method (partial try-get-method error)]
+        try-get-method (partial try-get-method error)
+        a-pat (annotate-pattern error)]
     (fn a-exp
       ([symbol-table [kind & args :as exp]]
        (case kind
@@ -337,12 +348,11 @@
            (with-type annotated-exp syntactic-type))
 
          :function
-         (let [[parameter body] args
-               parameter-type (mk-type-var 0)
-               annotated-body (a-exp (assoc symbol-table parameter parameter-type) body)
-               result-type (annotated-type annotated-body)]
-           (with-type [kind parameter annotated-body]
-             [java.util.function.Function parameter-type result-type]))
+         (let [[parameter-pattern body] args
+               [symbol-table1 annotated-pattern] (a-pat symbol-table parameter-pattern)
+               annotated-body (a-exp symbol-table1 body)]
+           (with-type [kind annotated-pattern annotated-body]
+             [java.util.function.Function (annotated-type annotated-pattern) (annotated-type annotated-body)]))
 
          :invoke-function
          (let [[func arg] args
@@ -359,6 +369,12 @@
   (reify java.util.function.Function
     (apply [this a]
       (f a))))
+
+(defn eval-annotated-pattern [[kind & args]]
+  (case kind
+    :pattern-identifier
+    (let [[parameter] args]
+      (fn [env argument] (assoc env parameter argument)))))
 
 (defn eval-annotated-exp [env [kind & args :as exp]]
   (case kind
@@ -398,8 +414,9 @@
     (-> args first env)
 
     :function
-    (let [[parameter body] args
-          f (fn [argument] (eval-annotated-exp (assoc env parameter argument) body))]
+    (let [[parameter-pattern body] args
+          updater (eval-annotated-pattern parameter-pattern)
+          f (fn [argument] (eval-annotated-exp (updater env argument) body))]
       (fn->function f))
 
     :invoke-function
