@@ -102,9 +102,9 @@
     (is (= java.time.Instant (pt "#2020-01-01T00:00:00Z#")))
     (is (= java.time.Duration (pt "#P1DT2H3M4S#")))
     (is (= java.time.Duration (pt "#-PT42.314S#")))
-    (is (= {:clj-antlr/position {:row 0 :column 0 :index 0},
-            :original-string "5"
-            :type [java.lang.Long]} (meta ((annotate-exp throw-error) {} (parse-csl-exp "5"))))))
+    (is (= {:clj-antlr/position {:row 0 :column 0 :index 0}
+            :type [Long]}
+           (meta ((annotate-exp throw-error) {} (parse-csl-exp "5"))))))
 
   (testing "variable"
     (is (= String (pt {"x" [String]} "x")))

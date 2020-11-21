@@ -15,8 +15,8 @@
     (conj (skip-odd (rest (rest s))) (first s))
     ()))
 
-(defn string->value [[first :as s]]
-  (case first
+(defn string->value [[first-elem :as s]]
+  (case first-elem
     \" (trim-start-end s)
     \# (let [content (trim-start-end s)]
          (case (first content)
@@ -56,7 +56,7 @@
     :constant
     (let [[s] args
           value (string->value s)]
-      (with-meta [kind value] (assoc (meta input) :original-string s)))
+      (with-meta [kind value] (meta input)))
 
     :variable
     (let [[[_ & names-seps]] args
