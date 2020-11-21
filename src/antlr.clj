@@ -86,72 +86,15 @@
             cbody (convert-csl-exp body)]
         (with-meta [:function cpat cbody] (meta input))))
 
+    :tuple_or_paren
+    (let [[_lpar & elements-separators] (butlast args)
+          elements (skip-odd elements-separators)]
+      (when-not (= (count elements) 1) (throw (ex-info "tuples not yet implemented" {:elements elements})))
+      (-> elements first convert-csl-exp))
+
     (throw (ex-info "convert-csl-exp: unknown exp type" {:args args :c (count input)}))
     ))
 
 (def antlr-parse-csl-exp (a/parser "csl.g4" {:root "expression_eof"}))
 (defn parse-csl-exp [s] (-> s antlr-parse-csl-exp second convert-csl-exp))
-
-(comment
-  (let [[_ e1 op e2] (-> "v :> I" antlr-parse-csl-exp rest butlast first)
-        [kind & args :as input] (-> "v :> I" antlr-parse-csl-exp rest butlast first)]
-    [e1 op e2]
-    [kind args input]
-    )
-  (convert-csl-exp '(:expression (:variable (:qualified_lower "v"))))
-  (-> "if (true) 2 else 3" parse-csl-exp)
-  (-> "v" parse-csl-exp)
-  (-> "v" antlr-parse-csl-exp second convert-csl-exp)
-  (-> "3+2" antlr-parse-csl-exp)
-  (-> "3*2" antlr-parse-csl-exp)
-  (-> "5" parse-csl-exp)
-  (-> "5e3" parse-csl-exp)
-  (-> "true true" antlr-parse-csl-exp)
-  (-> "M::v" parse-csl-exp)
-
-
-  (clojure.pprint/pprint ((a/parser "csl.g4") "
-val x = 2
-val y = x")
-                         )
-  (clojure.pprint/pprint ((a/parser "csl.g4")
-                          (slurp "/Users/zoren/deon/realstocks/csl-src/lifecycle.csl")))
-  (clojure.pprint/pprint (csl "val (\"x\", 3, []) = [1,2,3]"))
-  (clojure.pprint/pprint (csl "val x = \\s -> 2 + \"3\" * 4 <= 3 && 5 <= -x || #2020#"))
-
-  (clojure.pprint/pprint (csl "val max = \\(x: Float) -> \\(y: Float) -> if (x < y) y else x"))
-  (clojure.pprint/pprint (csl "val couponAmount = \\(terms: Terms) -> \\baseRate -> terms.loanSize * (terms.margin + max 0.0 baseRate)"))
-  (clojure.pprint/pprint (csl "val c = x.f1.f2"))
-
-
-  (->
-   (csl "val x = 2 + 3 * 4 <= 3 && 5 <= -x")
-   second
-   second
-                                        ;second
-                                        ; second
-                                        ; meta
-   last
-   meta
-   )
-  (System/getProperty "user.dir")
-
-  (-> '(:source_text (:top_level_decl "val" (:pattern (:pattern_identifier "x")) "=" (:expression (:constant "2"))) (:top_level_decl "val" (:pattern (:pattern_identifier "y")) "=" (:expression (:qualified_lower "x"))) "<EOF>")
-      rest
-      butlast)
-  ((annotate-top-level-decl #(throw (ex-info %1 %2)))
-   {}
-   '(:top_level_decl "val" (:pattern (:pattern_identifier "x")) "=" (:expression (:constant "2"))))
-  ((annotate-source-text #(throw (ex-info (str %1) %2)))
-   {}
-   ((a/parser "csl.g4") "
-val x = 2
-val y = if (x) 4 else 3")
-   )
-  (get-proxy-class Object)
-  (get-proxy-class Object)
-  ;; (def o (reify (symbol "java.lang.Object")
-  ;;          (toString [this] "hej")))
-  ;; (str o)
-  )
 

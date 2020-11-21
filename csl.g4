@@ -62,6 +62,8 @@ lambda_case : pattern '->' expression;
 
 lambda : '\\' lambda_case ('|' lambda_case)*;
 
+tuple_or_paren : '(' (expression (',' expression)*)? ')';
+
 expression
     : constant
     | qualified_upper
@@ -69,7 +71,7 @@ expression
     | if
     | lambda
     | 'let' val_decl+ 'in' expression
-    | '(' (expression (',' expression)*)? ')'
+    | tuple_or_paren
     | '[' (expression (',' expression)*)? ']'
     | '-' expression
     | expression ('*' | '/') expression
