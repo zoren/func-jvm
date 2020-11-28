@@ -1,6 +1,9 @@
 package experimentation.java;
 
 public class PublicInstanceField {
+    public PublicInstanceField (Long x, Long y) {
+	this.x = x + y;
+    }
     public Long x = 5L;
     public Long plus() { return x + 1; }
     public Number n(boolean b) {

@@ -15,7 +15,7 @@
     (conj (skip-odd (rest (rest s))) (first s))
     ()))
 
-(defn string->value [[first-elem :as s]]
+(defn convert-constant [[first-elem :as s]]
   (case first-elem
     \" (trim-start-end s)
     \# (let [content (trim-start-end s)]
@@ -23,7 +23,7 @@
            \P (java.time.Duration/parse content)
            \- (java.time.Duration/parse content)
            (java.time.Instant/parse content)))
-    :float (BigDecimal. (second s))
+    :lang_float (BigDecimal. (second s))
     :integer (Long/parseLong (second s)) ; todo give gracefull error message
     (case s
       "true" Boolean/TRUE
@@ -36,14 +36,17 @@
 
 (defn convert-type [[_ & t]]
   (cond
-    (= (ffirst t) :java_qualified)
-    (into [(-> t first second)] (map convert-type (rest t)))
+    (= (ffirst t) :qualified_name)
+    (into [(-> t first rest skip-odd)] (map convert-type (rest t)))
 
     :else
-    (throw (ex-info "convert-type: unknown exp type" {}))))
+    (throw (ex-info "convert-type: unknown exp type" {:t t}))))
 
 (def antlr-parse-csl-type (a/parser "csl.g4" {:root "type_eof"}))
-(-> "java.lang.A" antlr-parse-csl-type rest butlast first convert-type)
+(-> "java::lang::List java::lang::Number" antlr-parse-csl-type second
+                                        ;rest butlast first convert-type
+    convert-type
+    )
 ;;(-> "A B" antlr-parse-csl-type rest butlast first convert-type)
 (type '(:type (:qualified_upper "I") (:type (:qualified_upper "A"))))
 
@@ -59,17 +62,17 @@
   (case kind
     :constant
     (let [[s] args
-          value (string->value s)]
+          value (convert-constant s)]
       (with-meta [kind value] (meta input)))
 
-    :variable
-    (let [[[_ & names-seps]] args
-          qname (convert-qname names-seps)]
-      (with-meta [kind qname] (meta input)))
+    :qualified_name
+    (let [qname (skip-odd args)
+          qname (if (= (count qname) 1) (first qname) qname)]
+      (with-meta [:variable qname] (meta input)))
 
-    :if
+    :if_exp
     (let [[_if _lpar cond _rpar then _else else] args]
-      (with-meta [kind (convert-csl-exp cond) (convert-csl-exp then) (convert-csl-exp else)] (meta input)))
+      (with-meta [:if (convert-csl-exp cond) (convert-csl-exp then) (convert-csl-exp else)] (meta input)))
 
     :expression
     (case (count total)
@@ -80,6 +83,7 @@
       (let [[_ t1 s t2] total]
         (case s
           ":>" [:upcast (convert-csl-exp t1) (convert-type t2)]
+          "." [:field-access (convert-csl-exp t1) t2]
           ))
       )
 
@@ -95,10 +99,11 @@
     :tuple_or_paren
     (let [[_lpar & elements-separators] (butlast args)
           elements (skip-odd elements-separators)]
-      (when-not (= (count elements) 1) (throw (ex-info "tuples not yet implemented" {:elements elements})))
-      (-> elements first convert-csl-exp))
+      (if (= (count elements) 1)
+        (-> elements first convert-csl-exp)
+        (with-meta (into [:tuple] (map convert-csl-exp elements)) (meta input))))
 
-    (throw (ex-info "convert-csl-exp: unknown exp type" {:args args :c (count input)}))
+    (throw (ex-info "convert-csl-exp: unknown exp type" {:kind kind :args args :c (count input)}))
     ))
 
 (defn convert-tld [[_ [kind & args :as input] :as total]]

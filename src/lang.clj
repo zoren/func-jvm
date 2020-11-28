@@ -1,5 +1,6 @@
 (ns lang
   (:require
+   [clojure.string]
    [unify :refer [mk-type-var unify normalize]]
    )
   )
@@ -212,7 +213,8 @@
   (fn a-type [t]
     (when (or (not (vector? t)) (empty? t))
       (throw (ex-info "annotate-type: unknown type format" {:type t})))
-    (let [[class-name & args] t
+    (let [[qname & args] t
+          class-name (clojure.string/join "." qname)
           class-obj (try-get-class class-name)
           _ (if class-obj
               (when-not (= (count (.getTypeParameters class-obj)) (count args))
@@ -354,15 +356,49 @@
            (with-type [kind annotated-pattern annotated-body]
              [java.util.function.Function (annotated-type annotated-pattern) (annotated-type annotated-body)]))
 
-         :invoke-function
-         (let [[func arg] args
-               [annotated-func annotated-arg] (map (partial a-exp symbol-table) [func arg])
-               t-res (mk-type-var 0)]
-           (unify-message [java.util.function.Function (annotated-type annotated-arg) t-res]
-                          (annotated-type annotated-func) :argument-type-no-match)
-           (with-type [kind annotated-func annotated-arg] t-res))
+         :field-access
+         (let [[target field] args]
+           (case (first target)
+             :variable
+             (let [qname (last target)
+                   class-name (clojure.string/join "." qname)]
+               ;; todo handle when not a class!
+               (a-exp symbol-table [:get-static-field class-name field]))
 
-         (throw (ex-info "annotate-exp: unknown exp type" {:exp exp})))))
+             (a-exp symbol-table [:get-instance-field target field])))
+
+         :invoke-function
+         (let [[func arg] args]
+           (case (first func)
+             :variable
+             (let [[_ qname] func
+                   class-name (clojure.string/join "." qname)
+                   class-obj (try-get-class class-name)
+                   _ (when-not class-obj (error :class-not-found {:name class-name :qname qname}))
+                   ctor-args (if (= (first arg) :tuple) (rest arg) [arg])]
+               (a-exp symbol-table (into [:construct class-name] ctor-args)))
+
+             :field-access
+             (let [[_ [kind & as]] func]
+               (case kind
+                 :variable
+                 (let [qname (first as)
+                       class-name (clojure.string/join "." qname)
+                       method-args (if (= (first arg) :tuple) (rest arg) [arg])]
+                   ;; todo handle when not a class!
+                   (a-exp symbol-table (into [:invoke-static-method class-name (last func)] method-args)))
+
+                 (let [method-args (if (= (first arg) :tuple) (rest arg) [arg])]
+                   (a-exp symbol-table (into [:invoke-instance-method (second func) (last func)] method-args)))))
+
+             ;; assume it's a function
+             (let [[annotated-func annotated-arg] (map (partial a-exp symbol-table) [func arg])
+                   t-res (mk-type-var 0)]
+               (unify-message [java.util.function.Function (annotated-type annotated-arg) t-res]
+                              (annotated-type annotated-func) :argument-type-no-match)
+               (with-type [kind annotated-func annotated-arg] t-res))))
+
+         (throw (ex-info "annotate-exp: unknown exp type" {:kind kind :exp exp})))))
     ))
 
 (defn annotate-top-level-decl [error]
