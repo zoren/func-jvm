@@ -276,21 +276,6 @@
       (when-not class-obj (error :class-not-found {:name class-name}))
       (with-type exp Class {:class class-obj}))
 
-    :invoke-instance-method
-    (let [[instance-exp method-name & args] args
-          annotated-instance (annotate-exp symbol-table instance-exp)
-          annotated-args (map (partial annotate-exp symbol-table) args)
-          arg-types (map annotated-type (map wrap-primitive-types annotated-args))
-          method (try-get-method (first (annotated-type annotated-instance)) method-name arg-types)
-          _ (when (and method (static? method)) (error :static {:member method}))
-          [param-types return-type]
-          (if method
-            (specialize-method method)
-            [arg-types Object])]
-      (doseq [[pt a-arg] (map vector param-types annotated-args)]
-        (unify-message (wrap-primitive-types pt) (annotated-type a-arg) :argument-type-no-match))
-      (with-type (into [kind annotated-instance method-name] annotated-args) return-type {:method method}))
-
     :if
     (let [[an-cond an-true an-false] (map (partial annotate-exp symbol-table) args)]
       (unify-message [Boolean] (annotated-type an-cond) :if-cond-not-boolean)
@@ -383,8 +368,21 @@
                 (unify-message (wrap-primitive-types pt) (annotated-type a-arg) :argument-type-no-match))
               (with-type (into [:invoke-static-method class-name method-name] annotated-args) return-type {:method method}))
 
-            (let [method-args (if (= (first arg) :tuple) (rest arg) [arg])]
-              (annotate-exp symbol-table (into [:invoke-instance-method (second func) (last func)] method-args)))))
+            (let [target (second func)
+                  method-name (last func)
+                  method-args (if (= (first arg) :tuple) (rest arg) [arg])
+                  annotated-instance (annotate-exp symbol-table target)
+                  annotated-args (map (partial annotate-exp symbol-table) method-args)
+                  arg-types (map annotated-type (map wrap-primitive-types annotated-args))
+                  method (try-get-method (first (annotated-type annotated-instance)) method-name arg-types)
+                  _ (when (and method (static? method)) (error :static {:member method}))
+                  [param-types return-type]
+                  (if method
+                    (specialize-method method)
+                    [arg-types Object])]
+              (doseq [[pt a-arg] (map vector param-types annotated-args)]
+                (unify-message (wrap-primitive-types pt) (annotated-type a-arg) :argument-type-no-match))
+              (with-type (into [:invoke-instance-method annotated-instance method-name] annotated-args) return-type {:method method}))))
 
         ;; assume it's a function
         (let [[annotated-func annotated-arg] (map (partial annotate-exp symbol-table) [func arg])
