@@ -7,6 +7,9 @@
 
 (defn eval-annotated-pattern [[kind & args]]
   (case kind
+    :wildcard
+    (fn [env _argument] env)
+
     :pattern-identifier
     (let [[parameter] args]
       (fn [env argument] (assoc env parameter argument)))))

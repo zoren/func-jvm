@@ -245,6 +245,9 @@
 
 (defn annotate-pattern [symbol-table [kind & args]]
   (case kind
+    :wildcard
+    [symbol-table (with-type [kind] (mk-type-var 0))]
+
     :pattern-identifier
     (let [[id] args
           parameter-type (mk-type-var 0)]

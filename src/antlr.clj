@@ -52,6 +52,9 @@
 
 (defn convert-pattern [[_pattern [kind & args :as input] :as total]]
   (case kind
+    :wildcard
+    (with-meta [:wildcard] (meta input))
+
     :pattern_identifier
     (let [[var] args]
       (with-meta [:pattern-identifier var] (meta input)))
