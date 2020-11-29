@@ -4,6 +4,7 @@ source_text
     : top_level_decl* EOF
 ;
 
+pattern_eof : pattern EOF;
 expression_eof : expression EOF;
 type_eof : type EOF;
 
@@ -43,13 +44,15 @@ wildcard : '_';
 
 pattern_identifier : IDENTIFIER;
 
+pattern_tuple_or_paren : '(' (pattern (',' pattern)*)? ')';
+
 pattern
     : wildcard
     | pattern_identifier
     | pattern ':' type
     | constant
     | qualified_name pattern*
-    | '(' (pattern (',' pattern)*)? ')'
+    | pattern_tuple_or_paren
     | '[' (pattern (',' pattern)*)? ']'
 ;
 

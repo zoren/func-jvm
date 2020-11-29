@@ -50,15 +50,29 @@
 ;;(-> "A B" antlr-parse-csl-type rest butlast first convert-type)
 (type '(:type (:qualified_upper "I") (:type (:qualified_upper "A"))))
 
-(defn convert-pattern [[_pattern [kind & args :as input]]]
+(defn convert-pattern [[_pattern [kind & args :as input] :as total]]
   (case kind
     :pattern_identifier
     (let [[var] args]
       (with-meta [:pattern-identifier var] (meta input)))
 
-    (throw (ex-info "convert-pattern: unknown exp type" {}))))
+    :pattern_tuple_or_paren
+    (let [[_lpar & elements-separators] (butlast args)
+          elements (skip-odd elements-separators)]
+      (if (= (count elements) 1)
+        (-> elements first convert-pattern)
+        (throw (ex-info "todo tuples" {}))
+        #_        (with-meta (into [:tuple] (map convert-csl-exp elements)) (meta input))))
 
-(defn- convert-csl-exp [[_ [kind & args :as input] :as total]]
+    :pattern
+    (case (count total)
+      4
+      (let [[_ pat _colon type] total]
+        [:type-annotation (convert-pattern pat) (convert-type type)])
+
+      (throw (ex-info "convert-pattern: unknown pattern kind" {:total total})))
+
+    (throw (ex-info "convert-pattern: unknown pattern kind" {:kind kind}))))- convert-csl-exp [[_ [kind & args :as input] :as total]]
   (case kind
     :constant
     (let [[s] args

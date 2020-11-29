@@ -180,7 +180,17 @@
                                                          [(wrap-primitive-types t)]
                                                          (wrap-primitive-types t))} additionals))))
 
-(defn try-get-method [error class-obj method-name arg-types]
+(def errors (atom []))
+
+(defn error
+  ([msg] (error msg {}))
+  ([msg args] (do (swap! errors conj (assoc args :message msg)) nil)))
+
+(comment
+  (reset! errors [])
+  )
+
+(defn try-get-method [class-obj method-name arg-types]
   (let [arity-methods (if class-obj
                         (get-arity-methods class-obj method-name (count arg-types))
                         [])]
@@ -202,27 +212,26 @@
             1 (first type-filtered-methods)
             (error :ambiguous-method-signature {:method-candidates arity-methods})))))))
 
-(defn unify-message [error t1 t2 message]
+(defn unify-message [t1 t2 message]
   (try
     (unify t1 t2)
     nil
     (catch clojure.lang.ExceptionInfo _e
       (error message {:t1 t1 :t2 t2}))))
 
-(defn annotate-type [error]
-  (fn a-type [t]
-    (when (or (not (vector? t)) (empty? t))
-      (throw (ex-info "annotate-type: unknown type format" {:type t})))
-    (let [[qname & args] t
-          class-name (clojure.string/join "." qname)
-          class-obj (try-get-class class-name)
-          _ (if class-obj
-              (when-not (= (count (.getTypeParameters class-obj)) (count args))
-                (error :type-arity-mismatch {:params (.getTypeParameters class-obj) :args args}))
-              (error :class-not-found {:name class-name}))
-          annotated-args (map a-type args)]
+(defn annotate-type [t]
+  (when (or (not (vector? t)) (empty? t))
+    (throw (ex-info "annotate-type: unknown type format" {:type t})))
+  (let [[qname & args] t
+        class-name (clojure.string/join "." qname)
+        class-obj (try-get-class class-name)
+        _ (if class-obj
+            (when-not (= (count (.getTypeParameters class-obj)) (count args))
+              (error :type-arity-mismatch {:params (.getTypeParameters class-obj) :args args}))
+            (error :class-not-found {:name class-name}))
+        annotated-args (map annotate-type args)]
 
-      (with-type (into [class-name] annotated-args) (into [class-obj] (map annotated-type annotated-args))))))
+    (with-type (into [class-name] annotated-args) (into [class-obj] (map annotated-type annotated-args)))))
 
 ;; https://www.logicbig.com/how-to/code-snippets/jcode-reflection-class-isassignablefrom.html
 ;; Object[] isAssignableFrom Integer[]: true
@@ -234,191 +243,201 @@
     (doseq [[type-arg inferred-type-arg] (map vector syntactic-type-args inferred-type-args)]
       (ass type-arg inferred-type-arg))))
 
-(defn annotate-pattern [error]
-  (fn a-pattern [symbol-table [kind & args]]
-    (case kind
-      :pattern-identifier
-      (let [[id] args
-            parameter-type (mk-type-var 0)]
-        (when (symbol-table id) (error :id-already-bound))
-        [(assoc symbol-table id parameter-type)
-         (with-type [kind id] parameter-type)]))))
+(defn annotate-pattern [symbol-table [kind & args]]
+  (case kind
+    :pattern-identifier
+    (let [[id] args
+          parameter-type (mk-type-var 0)]
+      (when (symbol-table id) (error :id-already-bound))
+      [(assoc symbol-table id parameter-type)
+       (with-type [kind id] parameter-type)])
 
-(defn annotate-exp [error]
-  (let [unify-message (partial unify-message error)
-        try-get-method (partial try-get-method error)
-        a-pat (annotate-pattern error)]
-    (fn a-exp
-      ([symbol-table [kind & args :as exp]]
-       (case kind
-         :constant
-         (with-type exp (-> args first type))
-
-         :class
-         (let [[class-name] args
-               class-obj (try-get-class class-name)]
-           (when-not class-obj (error :class-not-found {:name class-name}))
-           (with-type exp Class {:class class-obj}))
-
-         :construct
-         (let [[class-name & args] args
-               class-obj (try-get-class class-name)
-               _ (when-not class-obj (error :class-not-found {:name class-name}))
-               annotated-args (map (partial a-exp symbol-table) args)
-               arg-types (map (comp first annotated-type) annotated-args)
-               ctor (when class-obj
-                      (let [ctor (try-get-constructor class-obj arg-types)]
-                        (when-not ctor (error :constructor-not-found {:name class-name :arg-types arg-types}))
-                        ctor))]
-           (with-type (into [kind class-name] annotated-args) class-obj {:ctor ctor}))
-
-         :get-static-field
-         (let [[class-name field-name] args
-               class-obj (try-get-class class-name)
-               _ (when-not class-obj (error :class-not-found {:name class-name}))
-               field (when class-obj
-                       (let [field (try-get-field class-obj field-name)]
-                         (when-not field (error :field-not-found))
-                         field))
-               t (if field (java-generic-type->type (.getGenericType field)) [Object])]
-           (when (and field (not (static? field))) (error :not-static {:member field}))
-           (with-type exp t {:class class-obj :field field}))
-
-         :get-instance-field
-         (let [[instance-exp field-name] args
-               annotated-instance (a-exp symbol-table instance-exp)
-               field (try-get-field (first (annotated-type annotated-instance)) field-name)
-               t (if field
-                   (do
-                     (when (static? field) (error :static))
-                     (java-generic-type->type (.getGenericType field)))
-                   (do
-                     (error :field-not-found)
-                     Object))]
-           (with-type [kind annotated-instance field-name] t {:field field}))
-
-         :invoke-static-method
-         (let [[class-name method-name & args] args
-               class-obj (try-get-class class-name)
-               _ (when-not class-obj (error :class-not-found {:name class-name}))
-               annotated-args (map (partial a-exp symbol-table) args)
-               arg-types (map annotated-type (map wrap-primitive-types annotated-args))
-               method (try-get-method class-obj method-name arg-types)
-               _ (when (and method (not (static? method))) (error :not-static {:member method}))
-               [param-types return-type]
-               (if method
-                 (specialize-method method)
-                 [arg-types Object])]
-           (doseq [[pt a-arg] (map vector param-types annotated-args)]
-             (unify-message (wrap-primitive-types pt) (annotated-type a-arg) :argument-type-no-match))
-           (with-type (into [kind class-name method-name] annotated-args) return-type {:method method}))
-
-         :invoke-instance-method
-         (let [[instance-exp method-name & args] args
-               annotated-instance (a-exp symbol-table instance-exp)
-               annotated-args (map (partial a-exp symbol-table) args)
-               arg-types (map annotated-type (map wrap-primitive-types annotated-args))
-               method (try-get-method (first (annotated-type annotated-instance)) method-name arg-types)
-               _ (when (and method (static? method)) (error :static {:member method}))
-               [param-types return-type]
-               (if method
-                 (specialize-method method)
-                 [arg-types Object])]
-           (doseq [[pt a-arg] (map vector param-types annotated-args)]
-             (unify-message (wrap-primitive-types pt) (annotated-type a-arg) :argument-type-no-match))
-           (with-type (into [kind annotated-instance method-name] annotated-args) return-type {:method method}))
-
-         :if
-         (let [[an-cond an-true an-false] (map (partial a-exp symbol-table) args)]
-           (unify-message [Boolean] (annotated-type an-cond) :if-cond-not-boolean)
-           (unify-message (annotated-type an-true) (annotated-type an-false) :if-branches-differ)
-           (with-type [kind an-cond an-true an-false] (annotated-type an-true)))
-
-         :variable
-         (let [[variable-name] args]
-           (when-not (contains? symbol-table variable-name)
-             (error :variable-not-found {:variable-name variable-name}))
-           (with-type exp (symbol-table variable-name)))
-
-         :upcast
-         (let [[exp t] args
-               annotated-exp (a-exp symbol-table exp)
-               ann-type ((annotate-type error) t)
-               syntactic-type (annotated-type ann-type)
-               inferred-type (normalize (annotated-type annotated-exp))]
-           ((assert-sub-type error) syntactic-type inferred-type)
-           (with-type annotated-exp syntactic-type))
-
-         :function
-         (let [[parameter-pattern body] args
-               [symbol-table1 annotated-pattern] (a-pat symbol-table parameter-pattern)
-               annotated-body (a-exp symbol-table1 body)]
-           (with-type [kind annotated-pattern annotated-body]
-             [java.util.function.Function (annotated-type annotated-pattern) (annotated-type annotated-body)]))
-
-         :field-access
-         (let [[target field] args]
-           (case (first target)
-             :variable
-             (let [qname (last target)
-                   class-name (clojure.string/join "." qname)]
-               ;; todo handle when not a class!
-               (a-exp symbol-table [:get-static-field class-name field]))
-
-             (a-exp symbol-table [:get-instance-field target field])))
-
-         :invoke-function
-         (let [[func arg] args]
-           (case (first func)
-             :variable
-             (let [[_ qname] func
-                   class-name (clojure.string/join "." qname)
-                   class-obj (try-get-class class-name)
-                   _ (when-not class-obj (error :class-not-found {:name class-name :qname qname}))
-                   ctor-args (if (= (first arg) :tuple) (rest arg) [arg])]
-               (a-exp symbol-table (into [:construct class-name] ctor-args)))
-
-             :field-access
-             (let [[_ [kind & as]] func]
-               (case kind
-                 :variable
-                 (let [qname (first as)
-                       class-name (clojure.string/join "." qname)
-                       method-args (if (= (first arg) :tuple) (rest arg) [arg])]
-                   ;; todo handle when not a class!
-                   (a-exp symbol-table (into [:invoke-static-method class-name (last func)] method-args)))
-
-                 (let [method-args (if (= (first arg) :tuple) (rest arg) [arg])]
-                   (a-exp symbol-table (into [:invoke-instance-method (second func) (last func)] method-args)))))
-
-             ;; assume it's a function
-             (let [[annotated-func annotated-arg] (map (partial a-exp symbol-table) [func arg])
-                   t-res (mk-type-var 0)]
-               (unify-message [java.util.function.Function (annotated-type annotated-arg) t-res]
-                              (annotated-type annotated-func) :argument-type-no-match)
-               (with-type [kind annotated-func annotated-arg] t-res))))
-
-         (throw (ex-info "annotate-exp: unknown exp type" {:kind kind :exp exp})))))
+    :type-annotation
+    (let [[pat type] args
+          [st2 annotated-pattern] (annotate-pattern symbol-table pat)
+          a-type (annotate-type type)
+          t (annotated-type a-type)]
+      (unify-message t (annotated-type annotated-pattern) :type-does-not-match-annotation)
+      [st2
+       (with-type [kind annotated-pattern annotated-type] t)])
     ))
 
-(defn annotate-top-level-decl [error]
-  (let [a-pat (annotate-pattern error)
-        a-exp (annotate-exp error)]
-    (fn [symbol-table [kind & args]]
-      (case kind
-        :val-decl
-        (let [[pattern exp] args
-              [symbol-table1 annotated-pattern] (a-pat symbol-table pattern)
-              annotated-exp (a-exp symbol-table1 exp)]
-          (unify-message error (annotated-type annotated-exp) (annotated-type annotated-pattern) :val-definitions-differ)
-          [symbol-table1 [:val-decl annotated-pattern annotated-exp]])))))
+(defn get-field [target-class field-name]
+  (or (try-get-field target-class field-name) (error :field-not-found)))
 
-(defn annotate-top-level-decls [error]
-  (let [a-tld (annotate-top-level-decl error)]
-    (fn [symbol-table tlds]
-      (reduce (fn [[st tlds] tld]
-                (let [[st1 annotated-tld] (a-tld st tld)]
-                  [st1 (conj tlds annotated-tld)])) [symbol-table []] tlds))))
+(defn annotate-exp [symbol-table [kind & args :as exp]]
+  (case kind
+    :constant
+    (with-type exp (-> args first type))
+
+    :class
+    (let [[class-name] args
+          class-obj (try-get-class class-name)]
+      (when-not class-obj (error :class-not-found {:name class-name}))
+      (with-type exp Class {:class class-obj}))
+
+    :construct
+    (let [[class-name & args] args
+          class-obj (try-get-class class-name)
+          _ (when-not class-obj (error :class-not-found {:name class-name}))
+          annotated-args (map (partial annotate-exp symbol-table) args)
+          arg-types (map (comp first annotated-type) annotated-args)
+          ctor (when class-obj
+                 (let [ctor (try-get-constructor class-obj arg-types)]
+                   (when-not ctor (error :constructor-not-found {:name class-name :arg-types arg-types}))
+                   ctor))]
+      (with-type (into [kind class-name] annotated-args) class-obj {:ctor ctor}))
+
+    :get-static-field
+    (let [[class-name field-name] args
+          class-obj (try-get-class class-name)
+          _ (when-not class-obj (error :class-not-found {:name class-name}))
+          field (when class-obj
+                  (let [field (try-get-field class-obj field-name)]
+                    (when-not field (error :field-not-found))
+                    field))
+          t (if field (java-generic-type->type (.getGenericType field)) [Object])]
+      (when (and field (not (static? field))) (error :not-static {:member field}))
+      (with-type exp t {:class class-obj :field field}))
+
+    :get-instance-field
+    (let [[instance-exp field-name] args
+          annotated-instance (annotate-exp symbol-table instance-exp)
+          field (try-get-field (first (annotated-type annotated-instance)) field-name)
+          t (if field
+              (do
+                (when (static? field) (error :static))
+                (java-generic-type->type (.getGenericType field)))
+              (do
+                (error :field-not-found)
+                Object))]
+      (with-type [kind annotated-instance field-name] t {:field field}))
+
+    :invoke-static-method
+    (let [[class-name method-name & args] args
+          class-obj (try-get-class class-name)
+          _ (when-not class-obj (error :class-not-found {:name class-name}))
+          annotated-args (map (partial annotate-exp symbol-table) args)
+          arg-types (map annotated-type (map wrap-primitive-types annotated-args))
+          method (try-get-method class-obj method-name arg-types)
+          _ (when (and method (not (static? method))) (error :not-static {:member method}))
+          [param-types return-type]
+          (if method
+            (specialize-method method)
+            [arg-types Object])]
+      (doseq [[pt a-arg] (map vector param-types annotated-args)]
+        (unify-message (wrap-primitive-types pt) (annotated-type a-arg) :argument-type-no-match))
+      (with-type (into [kind class-name method-name] annotated-args) return-type {:method method}))
+
+    :invoke-instance-method
+    (let [[instance-exp method-name & args] args
+          annotated-instance (annotate-exp symbol-table instance-exp)
+          annotated-args (map (partial annotate-exp symbol-table) args)
+          arg-types (map annotated-type (map wrap-primitive-types annotated-args))
+          method (try-get-method (first (annotated-type annotated-instance)) method-name arg-types)
+          _ (when (and method (static? method)) (error :static {:member method}))
+          [param-types return-type]
+          (if method
+            (specialize-method method)
+            [arg-types Object])]
+      (doseq [[pt a-arg] (map vector param-types annotated-args)]
+        (unify-message (wrap-primitive-types pt) (annotated-type a-arg) :argument-type-no-match))
+      (with-type (into [kind annotated-instance method-name] annotated-args) return-type {:method method}))
+
+    :if
+    (let [[an-cond an-true an-false] (map (partial annotate-exp symbol-table) args)]
+      (unify-message [Boolean] (annotated-type an-cond) :if-cond-not-boolean)
+      (unify-message (annotated-type an-true) (annotated-type an-false) :if-branches-differ)
+      (with-type [kind an-cond an-true an-false] (annotated-type an-true)))
+
+    :variable
+    (let [[variable-name] args]
+      (when-not (contains? symbol-table variable-name)
+        (error :variable-not-found {:variable-name variable-name}))
+      (with-type exp (symbol-table variable-name)))
+
+    :upcast
+    (let [[exp t] args
+          annotated-exp (annotate-exp symbol-table exp)
+          ann-type (annotate-type t)
+          syntactic-type (annotated-type ann-type)
+          inferred-type (normalize (annotated-type annotated-exp))]
+      ((assert-sub-type error) syntactic-type inferred-type)
+      (with-type annotated-exp syntactic-type))
+
+    :function
+    (let [[parameter-pattern body] args
+          [symbol-table1 annotated-pattern] (annotate-pattern symbol-table parameter-pattern)
+          annotated-body (annotate-exp symbol-table1 body)]
+      (with-type [kind annotated-pattern annotated-body]
+        [java.util.function.Function (annotated-type annotated-pattern) (annotated-type annotated-body)]))
+
+    :field-access
+    (let [[target field-name] args]
+      (case (first target)
+        :variable
+        (let [qname (second target)
+              annotated-target (if-let [class-obj (try-get-class (clojure.string/join "." qname))]
+                                 (with-type qname class-obj)
+                                 (annotate-exp symbol-table target))
+              target-class (-> annotated-target annotated-type normalize first)
+              field (get-field target-class field-name)
+              t (java-generic-type->type (.getGenericType field))]
+          (with-type [kind annotated-target field-name] t))
+
+        (let [annotated-target (annotate-exp symbol-table target)
+              t (annotated-type annotated-target)
+              nt (normalize t)
+              field (get-field (first nt) field-name)
+              ft (java-generic-type->type (.getGenericType field))]
+          (with-type [kind annotated-target field-name] ft))))
+
+    :invoke-function
+    (let [[func arg] args]
+      (case (first func)
+        :variable
+        (let [[_ qname] func
+              class-name (clojure.string/join "." qname)
+              class-obj (try-get-class class-name)
+              _ (when-not class-obj (error :class-not-found {:name class-name :qname qname}))
+              ctor-args (if (= (first arg) :tuple) (rest arg) [arg])]
+          (annotate-exp symbol-table (into [:construct class-name] ctor-args)))
+
+        :field-access
+        (let [[_ [kind & as]] func]
+          (case kind
+            :variable
+            (let [qname (first as)
+                  class-name (clojure.string/join "." qname)
+                  method-args (if (= (first arg) :tuple) (rest arg) [arg])]
+              ;; todo handle when not a class!
+              (annotate-exp symbol-table (into [:invoke-static-method class-name (last func)] method-args)))
+
+            (let [method-args (if (= (first arg) :tuple) (rest arg) [arg])]
+              (annotate-exp symbol-table (into [:invoke-instance-method (second func) (last func)] method-args)))))
+
+        ;; assume it's a function
+        (let [[annotated-func annotated-arg] (map (partial annotate-exp symbol-table) [func arg])
+              t-res (mk-type-var 0)]
+          (unify-message [java.util.function.Function (annotated-type annotated-arg) t-res]
+                         (annotated-type annotated-func) :argument-type-no-match)
+          (with-type [kind annotated-func annotated-arg] t-res))))
+
+    (throw (ex-info "annotate-exp: unknown exp type" {:kind kind :exp exp}))))
+
+(defn annotate-top-level-decl [symbol-table [kind & args]]
+  (case kind
+    :val-decl
+    (let [[pattern exp] args
+          [symbol-table1 annotated-pattern] (annotate-pattern symbol-table pattern)
+          annotated-exp (annotate-exp symbol-table1 exp)]
+      (unify-message (annotated-type annotated-exp) (annotated-type annotated-pattern) :val-definitions-differ)
+      [symbol-table1 [:val-decl annotated-pattern annotated-exp]])))
+
+(defn annotate-top-level-decls [symbol-table tlds]
+  (reduce (fn [[st tlds] tld]
+            (let [[st1 annotated-tld] (annotate-top-level-decls st tld)]
+              [st1 (conj tlds annotated-tld)])) [symbol-table []] tlds))
 
 (defn fn->function [f]
   (reify java.util.function.Function

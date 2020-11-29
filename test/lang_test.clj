@@ -1,7 +1,7 @@
 (ns lang-test
   (:require
    [clojure.test :refer [deftest is testing]]
-   [lang :refer [annotate-exp eval-annotated-exp annotated-type annotate-type]]
+   [lang :refer [annotate-exp annotated-type annotate-type]]
    [unify :refer [normalize renumber]]
    [antlr :refer [parse-csl-exp]]
    )
@@ -37,7 +37,7 @@
 (defn t
   ([e] (t {} e))
   ([st e]
-   (let [annotated-exp ((annotate-exp throw-error) st e)]
+   (let [annotated-exp (annotate-exp st e)]
      (-> annotated-exp
          annotated-type
          normalize
@@ -50,7 +50,7 @@
                 ([message] (error message {}))
                 ([message args] (swap! errors-atom conj (assoc args :message message))
                  nil))
-        annotated-exp ((annotate-exp error) symbol-table exp)]
+        annotated-exp (annotate-exp symbol-table exp)]
     {:errors @errors-atom :annotated-exp annotated-exp}))
 
 (defn t-error
@@ -94,7 +94,7 @@
     (is (= java.time.Duration (pt "#-PT42.314S#")))
     (is (= {:clj-antlr/position {:row 0 :column 0 :index 0}
             :type [Long]}
-           (meta ((annotate-exp throw-error) {} (parse-csl-exp "5"))))))
+           (meta (annotate-exp {} (parse-csl-exp "5"))))))
 
   (testing "variable"
     (is (= String (pt {"x" [String]} "x")))
@@ -128,10 +128,13 @@
     (is (= experimentation.java.PublicInstanceField (pt "experimentation::java::PublicInstanceField (3, 42)"))))
 
   (testing "static field"
-    (is (= java.time.Month (pt "java::time::Month.JULY"))))
+    (is (= java.time.Month (pt "java::time::Month.JULY")))
+    )
 
   (testing "instance field"
-    (is (= Long (pt "experimentation::java::PublicInstanceField(5, 6).x"))))
+    (is (= Long (pt "(experimentation::java::PublicInstanceField(5, 6)).x")))
+    (is (= [java.util.function.Function [experimentation.java.PublicInstanceField] [Long]]
+           (pt "\\(o : experimentation::java::PublicInstanceField) -> o.x"))))
 
   (testing "static method"
     (is (= [java.util.List [Long]] (pt "java::util::List.of 42")))
