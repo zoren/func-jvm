@@ -56,5 +56,7 @@
 
   (testing "invoke function"
     (is (= 5 (eval-exp "(\\x -> x) 5")))
+    (is (= 11 (eval-exp "(\\(o : experimentation::java::PublicInstanceField) -> o.x)
+                         (experimentation::java::PublicInstanceField (5, 6))")))
     )
   )

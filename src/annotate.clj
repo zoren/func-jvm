@@ -258,8 +258,7 @@
           a-type (annotate-type type)
           t (annotated-type a-type)]
       (unify-message t (annotated-type annotated-pattern) :type-does-not-match-annotation)
-      [st2
-       (with-type [kind annotated-pattern annotated-type] t)])
+      [st2 (with-type annotated-pattern t)])
     ))
 
 (defn get-field [target-class field-name]
