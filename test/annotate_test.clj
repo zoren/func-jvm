@@ -1,7 +1,7 @@
-(ns lang-test
+(ns annotate-test
   (:require
    [clojure.test :refer [deftest is testing]]
-   [lang :refer [annotate-exp annotated-type annotate-type]]
+   [annotate :refer [annotate-exp annotated-type annotate-type]]
    [unify :refer [normalize renumber]]
    [antlr :refer [parse-csl-exp]]
    )
@@ -125,6 +125,7 @@
     (is (= Long (pt "java::lang::Long \"23\"")))
     ;;    (is (= Long (pt "java::lang::Long 56.6"))) ; reports error
     (is (= Long (pt "java::lang::Long (\"23\")")))
+    (is (= Long (pt "java::lang::Long (123)")))
     (is (= experimentation.java.PublicInstanceField (pt "experimentation::java::PublicInstanceField (3, 42)"))))
 
   (testing "static field"
