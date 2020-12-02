@@ -274,21 +274,26 @@
     (let [[func arg] args]
       (case (first func)
         :variable
-        (let [[_ qname] func
-              class-name (clojure.string/join "." qname)
-              class-obj (try-get-class class-name)
-              _ (when-not class-obj (error :class-not-found {:name class-name :qname qname}))
-              ctor-args (if (= (first arg) :tuple) (rest arg) [arg])
+        (let [[_ qname] func]
+          (if (symbol-table qname)
+            (let [[annotated-func annotated-arg] (map (partial annotate-exp symbol-table) [func arg])
+                  t-res (mk-type-var 0)]
+              (unify-message [java.util.function.Function (annotated-type annotated-arg) t-res]
+                             (annotated-type annotated-func) :argument-type-no-match)
+              (with-type [kind annotated-func annotated-arg] t-res))
 
-              annotated-args (map (partial annotate-exp symbol-table) ctor-args)
-              arg-types (map (comp first annotated-type) annotated-args)
-              ctor (when class-obj
-                     (let [ctor (try-get-constructor class-obj arg-types)]
-                       (when-not ctor (error :constructor-not-found {:name class-name :arg-types arg-types}))
-                       ctor))
-              ]
-          (with-type (into [:construct class-name] annotated-args) class-obj {:ctor ctor})
-          )
+            (let [class-name (clojure.string/join "." qname)
+                  class-obj (try-get-class class-name)
+                  _ (when-not class-obj (error :class-not-found {:name class-name :qname qname}))
+                  ctor-args (if (= (first arg) :tuple) (rest arg) [arg])
+
+                  annotated-args (map (partial annotate-exp symbol-table) ctor-args)
+                  arg-types (map (comp first annotated-type) annotated-args)
+                  ctor (when class-obj
+                         (let [ctor (try-get-constructor class-obj arg-types)]
+                           (when-not ctor (error :constructor-not-found {:name class-name :arg-types arg-types}))
+                           ctor))]
+              (with-type (into [:construct class-name] annotated-args) class-obj {:ctor ctor}))))
 
         :field-access
         (let [[_ [kind & as]] func]
