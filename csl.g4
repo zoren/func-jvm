@@ -14,6 +14,7 @@ top_level_decl
 ;
 
 val_decl : 'val' pattern '=' expression;
+val_decls : val_decl+;
 
 type_decl_field : IDENTIFIER ':' type;
 
@@ -64,12 +65,14 @@ lambda : '\\' lambda_case ('|' lambda_case)*;
 
 tuple_or_paren : '(' (expression (',' expression)*)? ')';
 
+let : 'let' val_decls 'in' expression;
+
 expression
     : qualified_name
     | constant
     | if_exp
     | lambda
-    | 'let' val_decl+ 'in' expression
+    | let
     | tuple_or_paren
     | '[' (expression (',' expression)*)? ']'
     | '-' expression

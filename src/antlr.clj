@@ -122,6 +122,12 @@
         (-> elements first convert-csl-exp)
         (with-meta (into [:tuple] (map convert-csl-exp elements)) (meta input))))
 
+    :let
+    (let [[_let [_ & val_decls] _in body] args]
+      (with-meta [:let
+                  (map (fn [[_ _ pat _ exp]] [(convert-pattern pat) (convert-csl-exp exp)]) val_decls)
+                  (convert-csl-exp body)] (meta input)))
+
     (throw (ex-info "convert-csl-exp: unknown exp type" {:kind kind :args args :c (count input)}))
     ))
 

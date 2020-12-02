@@ -129,6 +129,8 @@
   ([msg] (error msg {}))
   ([msg args] (swap! errors conj (assoc args :message msg)) nil))
 
+(defn reset-errors! [] (reset! errors []))
+
 (comment
   (reset! errors [])
   )
@@ -186,21 +188,27 @@
     (doseq [[type-arg inferred-type-arg] (map vector syntactic-type-args inferred-type-args)]
       (ass type-arg inferred-type-arg))))
 
-(defn annotate-pattern [symbol-table [kind & args]]
+(defn get-variable [context variable-name]
+  (get-in context [:st variable-name]))
+
+(defn assoc-variable [context variable-name t]
+  (assoc-in context [:st variable-name] t))
+
+(defn annotate-pattern [context [kind & args]]
   (case kind
     :wildcard
-    [symbol-table (with-type [kind] (mk-type-var 0))]
+    [context (with-type [kind] (mk-type-var 0))]
 
     :pattern-identifier
     (let [[id] args
           parameter-type (mk-type-var 0)]
-      (when (symbol-table id) (error :id-already-bound))
-      [(assoc symbol-table id parameter-type)
+      (when (get-variable context id) (error :id-already-bound))
+      [(assoc-variable context id parameter-type)
        (with-type [kind id] parameter-type)])
 
     :type-annotation
     (let [[pat type] args
-          [st2 annotated-pattern] (annotate-pattern symbol-table pat)
+          [st2 annotated-pattern] (annotate-pattern context pat)
           a-type (annotate-type type)
           t (annotated-type a-type)]
       (unify-message t (annotated-type annotated-pattern) :type-does-not-match-annotation)
@@ -210,7 +218,7 @@
 (defn get-field [target-class field-name]
   (or (try-get-field target-class field-name) (error :field-not-found)))
 
-(defn annotate-exp [symbol-table [kind & args :as exp]]
+(defn annotate-exp [context [kind & args :as exp]]
   (case kind
     :constant
     (with-type exp (-> args first type))
@@ -222,20 +230,23 @@
       (with-type exp Class {:class class-obj}))
 
     :if
-    (let [[an-cond an-true an-false] (map (partial annotate-exp symbol-table) args)]
+    (let [[an-cond an-true an-false] (map (partial annotate-exp context) args)]
       (unify-message [Boolean] (annotated-type an-cond) :if-cond-not-boolean)
       (unify-message (annotated-type an-true) (annotated-type an-false) :if-branches-differ)
       (with-type [kind an-cond an-true an-false] (annotated-type an-true)))
 
     :variable
-    (let [[variable-name] args]
-      (when-not (contains? symbol-table variable-name)
-        (error :variable-not-found {:variable-name variable-name}))
-      (with-type exp (symbol-table variable-name)))
+    (let [[variable-name] args
+          t
+          (or (get-variable context variable-name)
+              (do
+                (error :variable-not-found {:variable-name variable-name})
+                Object))]
+      (with-type exp t))
 
     :upcast
     (let [[exp t] args
-          annotated-exp (annotate-exp symbol-table exp)
+          annotated-exp (annotate-exp context exp)
           ann-type (annotate-type t)
           syntactic-type (annotated-type ann-type)
           inferred-type (normalize (annotated-type annotated-exp))]
@@ -244,8 +255,8 @@
 
     :function
     (let [[parameter-pattern body] args
-          [symbol-table1 annotated-pattern] (annotate-pattern symbol-table parameter-pattern)
-          annotated-body (annotate-exp symbol-table1 body)]
+          [context1 annotated-pattern] (annotate-pattern context parameter-pattern)
+          annotated-body (annotate-exp context1 body)]
       (with-type [kind annotated-pattern annotated-body]
         [java.util.function.Function (annotated-type annotated-pattern) (annotated-type annotated-body)]))
 
@@ -257,26 +268,41 @@
               class-obj (try-get-class (clojure.string/join "." qname))
               annotated-target (if class-obj
                                  (with-type qname class-obj)
-                                 (annotate-exp symbol-table target))
+                                 (annotate-exp context target))
               target-class (-> annotated-target annotated-type normalize first)
               field (get-field target-class field-name)
               t (java-generic-type->type (.getGenericType field))]
           (with-type [(if class-obj :get-static-field :get-instance-field) annotated-target field-name] t {:field field}))
 
-        (let [annotated-target (annotate-exp symbol-table target)
+        (let [annotated-target (annotate-exp context target)
               t (annotated-type annotated-target)
               nt (normalize t)
               field (get-field (first nt) field-name)
               ft (java-generic-type->type (.getGenericType field))]
           (with-type [:get-instance-field annotated-target field-name] ft {:field field}))))
 
+    :let
+    (let [[val-decls body] args
+          [st2 a-val-decls]
+          (reduce (fn [[st a-decls] [pat decl-exp]]
+                    (let [[st1 annotated-pattern] (annotate-pattern st pat)
+                          a-exp (annotate-exp st1 decl-exp)
+                          tp (annotated-type annotated-pattern)
+                          te (annotated-type a-exp)]
+                      (unify-message tp te :val-decl)
+                      [st1 (conj a-decls [annotated-pattern a-exp])]))
+                  [context []]
+                  val-decls)
+          a-body (annotate-exp st2 body)]
+      (with-type [:let a-val-decls a-body] (annotated-type a-body)))
+
     :invoke-function
     (let [[func arg] args]
       (case (first func)
         :variable
         (let [[_ qname] func]
-          (if (symbol-table qname)
-            (let [[annotated-func annotated-arg] (map (partial annotate-exp symbol-table) [func arg])
+          (if (get-variable context qname)
+            (let [[annotated-func annotated-arg] (map (partial annotate-exp context) [func arg])
                   t-res (mk-type-var 0)]
               (unify-message [java.util.function.Function (annotated-type annotated-arg) t-res]
                              (annotated-type annotated-func) :argument-type-no-match)
@@ -287,7 +313,7 @@
                   _ (when-not class-obj (error :class-not-found {:name class-name :qname qname}))
                   ctor-args (if (= (first arg) :tuple) (rest arg) [arg])
 
-                  annotated-args (map (partial annotate-exp symbol-table) ctor-args)
+                  annotated-args (map (partial annotate-exp context) ctor-args)
                   arg-types (map (comp first annotated-type) annotated-args)
                   ctor (when class-obj
                          (let [ctor (try-get-constructor class-obj arg-types)]
@@ -305,7 +331,7 @@
                   method-args (if (= (first arg) :tuple) (rest arg) [arg])
                   class-obj (try-get-class class-name)
                   _ (when-not class-obj (error :class-not-found {:name class-name}))
-                  annotated-args (map (partial annotate-exp symbol-table) method-args)
+                  annotated-args (map (partial annotate-exp context) method-args)
                   arg-types (map annotated-type (map wrap-primitive-types annotated-args))
                   method (try-get-method class-obj method-name arg-types)
                   _ (when (and method (not (static? method))) (error :not-static {:member method}))
@@ -321,8 +347,8 @@
             (let [target (second func)
                   method-name (last func)
                   method-args (if (= (first arg) :tuple) (rest arg) [arg])
-                  annotated-instance (annotate-exp symbol-table target)
-                  annotated-args (map (partial annotate-exp symbol-table) method-args)
+                  annotated-instance (annotate-exp context target)
+                  annotated-args (map (partial annotate-exp context) method-args)
                   arg-types (map annotated-type (map wrap-primitive-types annotated-args))
                   method (try-get-method (first (annotated-type annotated-instance)) method-name arg-types)
                   _ (when (and method (static? method)) (error :static {:member method}))
@@ -335,7 +361,7 @@
               (with-type (into [:invoke-instance-method annotated-instance method-name] annotated-args) return-type {:method method}))))
 
         ;; assume it's a function
-        (let [[annotated-func annotated-arg] (map (partial annotate-exp symbol-table) [func arg])
+        (let [[annotated-func annotated-arg] (map (partial annotate-exp context) [func arg])
               t-res (mk-type-var 0)]
           (unify-message [java.util.function.Function (annotated-type annotated-arg) t-res]
                          (annotated-type annotated-func) :argument-type-no-match)

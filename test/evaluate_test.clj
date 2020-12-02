@@ -58,6 +58,8 @@
     (is (= 5 (eval-exp "(\\x -> x) 5")))
     (is (= 11 (eval-exp "(\\(o : experimentation::java::PublicInstanceField) -> o.x)
                          (experimentation::java::PublicInstanceField (5, 6))")))
-    (is (= 5 (eval-exp "(\\_ -> 5) 6")))
-    )
+    (is (= 5 (eval-exp "(\\_ -> 5) 6"))))
+
+  (testing "let"
+    (is (= 5 (eval-exp "let val x = 5 val y = x in y"))))
   )

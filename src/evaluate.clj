@@ -65,6 +65,14 @@
             f (fn [argument] (eval-annotated-exp (updater env argument) body))]
         (fn->function f))
 
+      :let
+      (let [[val-decls body] args
+            env3 (reduce (fn [env [pat exp]]
+                           (let [updater (eval-annotated-pattern pat)
+                                 v (eval-annotated-exp env exp)]
+                             (updater env v))) env val-decls)]
+        (eval-annotated-exp env3 body))
+
       :invoke-function
       (let [[func arg] args]
         (.apply (eval-annotated-exp env func) (eval-annotated-exp env arg)))
