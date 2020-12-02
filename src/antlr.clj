@@ -75,7 +75,9 @@
 
       (throw (ex-info "convert-pattern: unknown pattern kind" {:total total})))
 
-    (throw (ex-info "convert-pattern: unknown pattern kind" {:kind kind}))))- convert-csl-exp [[_ [kind & args :as input] :as total]]
+    (throw (ex-info "convert-pattern: unknown pattern kind" {:kind kind}))))
+
+(defn- convert-csl-exp [[_ [kind & args :as input] :as total]]
   (case kind
     :constant
     (let [[s] args
