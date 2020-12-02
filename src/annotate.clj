@@ -127,7 +127,7 @@
 
 (defn error
   ([msg] (error msg {}))
-  ([msg args] (do (swap! errors conj (assoc args :message msg)) nil)))
+  ([msg args] (swap! errors conj (assoc args :message msg)) nil))
 
 (comment
   (reset! errors [])

@@ -125,7 +125,7 @@
     (throw (ex-info "convert-csl-exp: unknown exp type" {:kind kind :args args :c (count input)}))
     ))
 
-(defn convert-tld [[_ [kind & args :as input] :as total]]
+(defn convert-tld [[_ [kind & args :as input]]]
   (case kind
     :val_decl
     (let [[_val pat _eq exp] args]
