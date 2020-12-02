@@ -44,30 +44,6 @@
     [(primitive-type->wrapper (first t) (first t))]
     (primitive-type->wrapper t t)))
 
-(bean
- (first
-  (.getParameters
-   (first (filter (fn [method]
-                    (and (= (.getName method) "of")))
-                  (.getMethods java.util.List))))))
-
-(-> java.util.List
-    (.getMethod "of" (into-array Class [Object Object Object]))
-    .getTypeParameters
-    first)
-
-(empty?
- (->>
-  (-> java.lang.Long
-      .getMethods)
-  (filter (fn [method]
-            (and (= (.getName method) "getLong"))
-            ))
-  last
-  .getTypeParameters
-  )
- )
-
 (defn get-arity-methods [class-obj method-name number-of-arguments]
   (filter
    (fn [method]
@@ -78,8 +54,6 @@
            #(not (instance? java.lang.reflect.GenericArrayType (.getParameterizedType %)))
            (.getParameters method))))
    (.getMethods class-obj)))
-
-(first (get-arity-methods java.lang.Long "getLong" 2))
 
 (defn specialize-type [mapping]
   (fn type-> [t]
@@ -106,35 +80,10 @@
     [(map #(type-> (.getParameterizedType %)) (.getParameters method))
      (type-> (.getGenericReturnType method))]))
 
-(comment
-  (specialize-method
-   (.getMethod java.lang.Long "getLong" (into-array Class [String Long])))
-  (empty? (.getTypeParameters (.getMethod java.lang.Long "getLong" (into-array Class [String Long]))))
-  (specialize-method
-   (.getMethod java.lang.Long "toHexString" (into-array Class [Long/TYPE])))
-
-  (Long/toHexString 43)
-
-  (bean (.getGenericReturnType (second (get-arity-methods java.util.List "of" 1))))
-
-  (map (fn [m] (map #(.getName %) (.getTypeParameters m))) (get-arity-methods java.util.List "of" 1))
-  (map (fn [m] (map #(.getParameterizedType %) (.getParameters m))) (get-arity-methods java.util.List "of" 1))
-
-  (first
-   (specialize-method
-    (first (get-arity-methods java.util.List "of" 1))
-    )
-   )
-  )
-
-
 (defn get-type-parameters [method]
   (let [type-parameters (.getTypeParameters method)]
     (when-not (empty? type-parameters)
       (into [] type-parameters))))
-
-(get-type-parameters (first (get-arity-methods java.lang.Long "getLong" 2)))
-(bean (first (get-type-parameters (first (get-arity-methods java.util.List "of" 2)))))
 
 (defn check-method [class-obj method-name argument-types]
   (let [methods (get-arity-methods class-obj method-name (count argument-types))]
@@ -151,12 +100,6 @@
                                                     :method-name method-name
                                                     :argument-types argument-types
                                                     :methods methods})))))
-
-(comment
-  (check-method java.util.List "of" [])
-  (check-method java.util.List "of" [Long Long])
-  (check-method java.util.List "of" (repeat 20 Long))
-  )
 
 (defn check-field [class-obj field-name]
   (try
