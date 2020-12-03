@@ -61,5 +61,6 @@
     (is (= 5 (eval-exp "(\\_ -> 5) 6"))))
 
   (testing "let"
-    (is (= 5 (eval-exp "let val x = 5 val y = x in y"))))
-  )
+    (is (= 5 (eval-exp "let val x = 5 val y = x in y")))
+    (is (= 5 (eval-exp "let val f = \\x -> 5 in if(true) f 1.0 else f 1")))
+    (is (= 5 (eval-exp "let val f = \\x -> x val y = f 1.0 val z = f 5 in z")))))

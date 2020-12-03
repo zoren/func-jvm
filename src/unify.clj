@@ -28,11 +28,6 @@
     :else
     (throw (ex-info "normalize: unknown arg" {:t t}))))
 
-(-> java.util.List
-    (.getMethod "of" (into-array Class [Object Object Object]))
-    .getTypeParameters
-    )
-
 (defn type-vars [t]
   (distinct
    (if (vector? t)
@@ -45,6 +40,18 @@
        (into [(first t)] (map m (rest t)))
        (f t)))
    t))
+
+(defn get-unbound-type-vars [level t]
+  (filter (fn [tv] (< level @(:level tv))) (type-vars t)))
+
+(defn generalize [t level]
+  (let [nt (normalize t)
+        non-free-vars (get-unbound-type-vars level nt)]
+    [non-free-vars nt]))
+
+(defn specialize [level tvs t]
+  (let [tenv (into {} (map (fn [tv] [tv (mk-type-var level)]) tvs))]
+    (map-type-vars (fn [tv] (tenv tv tv)) t)))
 
 (defn int->str [i]
   (if (< i 26)
@@ -103,7 +110,6 @@
     (def tv1 (mk-type-var 0))
     )
   (normalize tv0)
-  (unify tv0 tv1)
   (unify tv0 tv1)
   (unify tv0 [:int])
   (unify tv0 [:string])

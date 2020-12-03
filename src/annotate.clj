@@ -1,7 +1,7 @@
 (ns annotate
   (:require
    [clojure.string]
-   [unify :refer [mk-type-var unify normalize]]
+   [unify :refer [mk-type-var unify normalize specialize generalize]]
    )
   )
 
@@ -194,25 +194,27 @@
 (defn assoc-variable [context variable-name t]
   (assoc-in context [:st variable-name] t))
 
+(defn get-level [context] (:level context 0))
+
 (defn annotate-pattern [context [kind & args]]
   (case kind
     :wildcard
-    [context (with-type [kind] (mk-type-var 0))]
+    [{} (with-type [kind] (-> context get-level mk-type-var))]
 
     :pattern-identifier
     (let [[id] args
-          parameter-type (mk-type-var 0)]
+          parameter-type (-> context get-level mk-type-var)]
       (when (get-variable context id) (error :id-already-bound))
-      [(assoc-variable context id parameter-type)
+      [{id parameter-type}
        (with-type [kind id] parameter-type)])
 
     :type-annotation
     (let [[pat type] args
-          [st2 annotated-pattern] (annotate-pattern context pat)
+          [pv annotated-pattern] (annotate-pattern context pat)
           a-type (annotate-type type)
           t (annotated-type a-type)]
       (unify-message t (annotated-type annotated-pattern) :type-does-not-match-annotation)
-      [st2 (with-type annotated-pattern t)])
+      [pv (with-type annotated-pattern t)])
     ))
 
 (defn get-field [target-class field-name]
@@ -237,12 +239,13 @@
 
     :variable
     (let [[variable-name] args
-          t
+          {:keys [tvars t]}
           (or (get-variable context variable-name)
               (do
                 (error :variable-not-found {:variable-name variable-name})
-                Object))]
-      (with-type exp t))
+                Object))
+          spec-t (specialize (get-level context) (or tvars []) t)]
+      (with-type exp spec-t))
 
     :upcast
     (let [[exp t] args
@@ -255,7 +258,9 @@
 
     :function
     (let [[parameter-pattern body] args
-          [context1 annotated-pattern] (annotate-pattern context parameter-pattern)
+          [pat-vars annotated-pattern] (annotate-pattern context parameter-pattern)
+          context1
+          (reduce (fn [c [v t]] (assoc-variable c v {:t t})) context pat-vars)
           annotated-body (annotate-exp context1 body)]
       (with-type [kind annotated-pattern annotated-body]
         [java.util.function.Function (annotated-type annotated-pattern) (annotated-type annotated-body)]))
@@ -284,13 +289,18 @@
     :let
     (let [[val-decls body] args
           [st2 a-val-decls]
-          (reduce (fn [[st a-decls] [pat decl-exp]]
-                    (let [[st1 annotated-pattern] (annotate-pattern st pat)
-                          a-exp (annotate-exp st1 decl-exp)
-                          tp (annotated-type annotated-pattern)
-                          te (annotated-type a-exp)]
-                      (unify-message tp te :val-decl)
-                      [st1 (conj a-decls [annotated-pattern a-exp])]))
+          (reduce (fn [[ctx a-decls] [pat decl-exp]]
+                    (let [ctx-level (update ctx :level (fnil inc 0))
+                          [pat-vars annotated-pattern] (annotate-pattern ctx-level pat)
+                          level (get-level ctx)
+                          a-exp (annotate-exp ctx-level decl-exp)]
+                      (unify-message (annotated-type annotated-pattern) (annotated-type a-exp) :val-decl)
+                      [(reduce (fn [c [v t]]
+                                 (assoc-variable
+                                  c v
+                                  (let [[tvars t] (generalize t level)]
+                                    (merge {:t t} (when-not (empty? tvars) {:tvars tvars}))))) ctx pat-vars)
+                       (conj a-decls [annotated-pattern a-exp])]))
                   [context []]
                   val-decls)
           a-body (annotate-exp st2 body)]

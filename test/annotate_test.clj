@@ -99,8 +99,8 @@
            (meta (annotate-exp {} (parse-csl-exp "5"))))))
 
   (testing "variable"
-    (is (= String (pt {"x" [String]} "x")))
-    (is (= Long (pt {["M" "x"] [Long]} "M::x"))))
+    (is (= String (pt {"x" {:t [String]}} "x")))
+    (is (= Long (pt {["M" "x"] {:t [Long]}} "M::x"))))
 
   (testing "if"
     (is (= Long (pt "if (true) 3 else 5"))))
@@ -114,14 +114,21 @@
     (is (= [java.util.function.Function :a [Long]] (pt "\\x -> 5")))
     (is (= [java.util.function.Function [Long] [Long]] (pt "\\x -> if (true) x else 5")))
     (is (= [java.util.function.Function :a [java.util.function.Function :b :a]]
-           (pt "\\x -> \\y -> x"))))
+           (pt "\\x -> \\y -> x")))
+    (is (= [java.util.function.Function [experimentation.java.PublicInstanceField] [Long]]
+           (pt "\\(o : experimentation::java::PublicInstanceField) -> o.x")))
+    (is (= [java.util.function.Function [experimentation.java.PublicInstanceField] [experimentation.java.PublicInstanceField]]
+           (pt "\\(o : experimentation::java::PublicInstanceField) -> o"))))
 
   (testing "parens"
     (is (= Long (pt "5")))
     (is (= [java.util.function.Function :a :a] (pt "(\\x -> x)"))))
 
   (testing "function apply"
-    (is (= Long (pt "(\\x -> x) 5"))))
+    (is (= Long (pt "(\\x -> x) 5")))
+    (is (= Long (pt "(\\(o : experimentation::java::PublicInstanceField) -> o.x)
+                         (experimentation::java::PublicInstanceField (5, 6))")
+           )))
 
   (testing "constructor"
     (is (= Long (pt "java::lang::Long \"23\"")))
@@ -147,11 +154,14 @@
     (is (= String (pt "12.toString()"))))
 
   (testing "let"
+    (is (= Long (pt "let val x = 5 in 6")))
+    (is (= Long (pt "let val x = 5 in x")))
     (is (= Long (pt "let val x = 5 val y = x in y")))
     (is (= Long (pt "let val f = \\x -> x in f 3")))
     (is (= Long (pt "let val f = \\x -> x val y = f 1 in y")))
     (is (= Long (pt "let val f = \\x -> x val y = f 1 val z = f 1 in z")))
-    #_(is (= Long (pt "let val f = \\x -> x val y = f 1.0 val z = f 1 in z")))
+    (is (= Long (pt "let val f = \\x -> 5 in if(true) f 1.0 else f 1")))
+    (is (= Long (pt "let val f = \\x -> x val y = f 1.0 val z = f 1 in z")))
     )
   )
 
