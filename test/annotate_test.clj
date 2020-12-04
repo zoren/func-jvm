@@ -48,10 +48,6 @@
 
 (defn t-error-list [symbol-table exp]
   (let [errors-atom (atom [])
-        error (fn error
-                ([message] (error message {}))
-                ([message args] (swap! errors-atom conj (assoc args :message message))
-                 nil))
         annotated-exp (annotate-exp symbol-table exp)]
     {:errors @errors-atom :annotated-exp annotated-exp}))
 
