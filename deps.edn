@@ -1,10 +1,6 @@
 {:deps
  {experimentation.java/experimentation.java
   {:local/root "java/experimentation.jar"}
-  jsitter/jsitter
-  {;:mvn/version "0.1-SNAPSHOT"
-   :local/root "/Users/zoren/.m2/repository/com/jetbrains/jsitter/jsitter/0.1-SNAPSHOT/jsitter-0.1-SNAPSHOT.jar"
-   }
   clj-antlr/clj-antlr {:mvn/version "0.2.7"}
   }
  :aliases
