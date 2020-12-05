@@ -377,6 +377,36 @@
                          (annotated-type annotated-func) :argument-type-no-match)
           (with-type [kind annotated-func annotated-arg] t-res))))
 
+    :binary-operator
+    (let [[operator e1 e2] args
+          [ae1 ae2] (map (partial annotate-exp context) [e1 e2])
+          _ (unify-message (annotated-type ae1) (annotated-type ae2) :operand-types-differ)
+          operator-t (normalize (annotated-type ae1))
+          result-type
+          (cond
+            (#{:+ :- :* :/} operator)
+            (do
+              (when-not (#{[Long] [BigDecimal]} operator-t)
+                (error :no-overload-found {:operand-type operator-t}))
+              operator-t)
+
+            (#{:<= :>= :< :> :=} operator)
+            (do
+              (when-not (#{Long BigDecimal java.time.Instant} (first operator-t))
+                (error :comparison-does-not-apply {:operand-type operator-t}))
+              [Boolean])
+
+            (#{:&& :||} operator)
+            (do
+              (when-not (= [Boolean] operator-t)
+                (error :logical-operator-on-non-boolean {:operand-type operator-t}))
+              [Boolean])
+
+            :else
+            (throw (ex-info "unknown operator" {:operator operator}))
+            )]
+      (with-type [kind ae1 ae2] result-type))
+
     (throw (ex-info "annotate-exp: unknown exp type" {:kind kind :exp exp}))))
 
 (defn annotate-top-level-decl [symbol-table [kind & args]]

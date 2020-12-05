@@ -103,7 +103,8 @@
         (case s
           ":>" [:upcast (convert-csl-exp t1) (convert-type t2)]
           "." [:field-access (convert-csl-exp t1) t2]
-          ))
+
+          [:binary-operator (keyword s) (convert-csl-exp t1) (convert-csl-exp t2)]))
       )
 
     :lambda

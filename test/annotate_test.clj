@@ -159,5 +159,25 @@
     (is (= Long (pt "let val f = \\x -> 5 in if(true) f 1.0 else f 1")))
     (is (= Long (pt "let val f = \\x -> x val y = f 1.0 val z = f 1 in z")))
     )
+
+  (testing "arithmetic operator"
+    (is (= Long (pt "5 + 6")))
+    (is (= BigDecimal (pt "5.0 + 6.0")))
+    #_(is (= BigDecimal (pt "5 + 6.0")))
+    (is (= BigDecimal (pt "5.0 - 6.0")))
+    (is (= BigDecimal (pt "5.0 * 6.0")))
+    (is (= BigDecimal (pt "5.0 / 6.0")))
+    )
+
+  (testing "comparison operator"
+    (is (= Boolean (pt "5 < 6")))
+    (is (= Boolean (pt "5.0 < 6.0")))
+    (is (= Boolean (pt "#2020-01-01T00:00:00Z# < #2020-01-01T00:00:00Z#")))
+    )
+
+  (testing "logic operator"
+    (is (= Boolean (pt "true && false")))
+    (is (= Boolean (pt "true || false")))
+    )
   )
 
