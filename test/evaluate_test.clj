@@ -80,7 +80,10 @@
     (is (= 3.0M (eval-exp "if (false) 3 :> java::lang::Number else 3.0 :> java::lang::Number"))))
 
   (testing "lambda"
-    (is (= 5 (.apply (eval-exp "\\x->x") 5))))
+    (is (= 5 (.apply (eval-exp "\\x->x") 5)))
+    (is (= 6 (eval-exp "(\\5 -> 6) 5")))
+    (is (thrown? clojure.lang.ExceptionInfo (eval-exp "(\\5 -> 6) 6")))
+    )
 
   (testing "invoke function"
     (is (= 5 (eval-exp "(\\x -> x) 5")))
@@ -91,4 +94,8 @@
   (testing "let"
     (is (= 5 (eval-exp "let val x = 5 val y = x in y")))
     (is (= 5 (eval-exp "let val f = \\x -> 5 in if(true) f 1.0 else f 1")))
-    (is (= 5 (eval-exp "let val f = \\x -> x val y = f 1.0 val z = f 5 in z")))))
+    (is (= 5 (eval-exp "let val f = \\x -> x val y = f 1.0 val z = f 5 in z")))
+    (is (= 5 (eval-exp "let val 6 = 6 in 5")))
+    (is (thrown? clojure.lang.ExceptionInfo (eval-exp "let val 5 = 6 in 5")))
+    )
+  )

@@ -12,7 +12,11 @@
 
     :pattern-identifier
     (let [[parameter] args]
-      (fn [env argument] (assoc env parameter argument)))))
+      (fn [env argument] (assoc env parameter argument)))
+
+    :constant
+    (let [[c] args]
+      (fn [env argument] (when (= c argument) env)))))
 
 (defn eval-annotated-exp [env [kind & args :as exp]]
   (let [eval-args (fn [args] (into-array Object (map (partial eval-annotated-exp env) args)))]
@@ -98,15 +102,21 @@
       :function
       (let [[parameter-pattern body] args
             updater (eval-annotated-pattern parameter-pattern)
-            f (fn [argument] (eval-annotated-exp (updater env argument) body))]
+            f (fn [argument]
+                (if-let [env1 (updater env argument)]
+                  (eval-annotated-exp env1 body)
+                  (throw (ex-info "pattern did not match" {:pattern parameter-pattern :argument argument}))))]
         (fn->function f))
 
       :let
       (let [[val-decls body] args
             env3 (reduce (fn [env [pat exp]]
                            (let [updater (eval-annotated-pattern pat)
-                                 v (eval-annotated-exp env exp)]
-                             (updater env v))) env val-decls)]
+                                 v (eval-annotated-exp env exp)
+                                 env1 (updater env v)]
+                             (when-not env1 (throw (ex-info "pattern did not match" {:pat pat})))
+                             env1
+                             )) env val-decls)]
         (eval-annotated-exp env3 body))
 
       :invoke-function

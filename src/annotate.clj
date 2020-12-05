@@ -215,6 +215,10 @@
           t (annotated-type a-type)]
       (unify-message t (annotated-type annotated-pattern) :type-does-not-match-annotation)
       [pv (with-type annotated-pattern t)])
+
+    :constant
+    (let [[c] args]
+      [{} (with-type [kind c] (type c))])
     ))
 
 (defn get-field [target-class field-name]
