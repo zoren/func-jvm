@@ -405,7 +405,7 @@
             :else
             (throw (ex-info "unknown operator" {:operator operator}))
             )]
-      (with-type [kind ae1 ae2] result-type))
+      (with-type [kind operator ae1 ae2] result-type))
 
     (throw (ex-info "annotate-exp: unknown exp type" {:kind kind :exp exp}))))
 
