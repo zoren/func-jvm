@@ -56,6 +56,38 @@
           (eval-annotated-exp env t)
           (eval-annotated-exp env f)))
 
+      :binary-operator
+      (let [[operator e1 e2] args]
+        (cond
+          (#{:+ :- :*
+             :<= :>= :< :> :=} operator)
+          ;; TODO make sure we handle wrapping of integers correctly
+          ;; use math context 128 for bigdecimals
+          ;; comparison of instants
+          ;; allow comparison operators for all comparables
+          ((-> operator name symbol eval) (eval-annotated-exp env e1) (eval-annotated-exp env e2))
+
+          (= :/ operator)
+          (let [arg-type (-> e1 meta :type first)]
+            (cond
+              (= arg-type BigDecimal)
+              (binding [*math-context* java.math.MathContext/DECIMAL128]
+                (/ (eval-annotated-exp env e1) (eval-annotated-exp env e2)))
+              (= arg-type Long)
+              (quot (eval-annotated-exp env e1) (eval-annotated-exp env e2))))
+
+          (= :&& operator)
+          (if (eval-annotated-exp env e1)
+            (eval-annotated-exp env e2)
+            false)
+
+          (= :|| operator)
+          (if (eval-annotated-exp env e1)
+            true
+            (eval-annotated-exp env e2))
+          )
+        )
+
       :variable
       (-> args first env)
 

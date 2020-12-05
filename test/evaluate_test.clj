@@ -47,6 +47,27 @@
     (is (= 3 (eval-exp "if (true) 3 else 5")))
     (is (= 5 (eval-exp "if (false) 3 else 5"))))
 
+  (testing "binary"
+    (is (= 11 (eval-exp "5 + 6")))
+    (is (= -1 (eval-exp "5 - 6")))
+    (is (= 30 (eval-exp "5 * 6")))
+    (is (= 0 (eval-exp "5 / 6")))
+    (is (= (binding [*math-context* java.math.MathContext/DECIMAL128]
+             (/ 1.0M 3.0M)) (eval-exp "1.0 / 3.0")))
+    (is (= true (eval-exp "5 <= 6")))
+    (is (= true (eval-exp "5.0 <= 6.0")))
+    #_(is (= true (eval-exp "#2020-01-01T00:00:00Z# < #2020-01-01T00:00:00Z#")))
+
+    (is (= false (eval-exp "false && false")))
+    (is (= false (eval-exp "false && true")))
+    (is (= false (eval-exp "true && false")))
+    (is (= true (eval-exp "true && true")))
+
+    (is (= false (eval-exp "false || false")))
+    (is (= true (eval-exp "false || true")))
+    (is (= true (eval-exp "true || false")))
+    (is (= true (eval-exp "true || true"))))
+
   (testing "upcast"
     (is (= 3 (eval-exp "if (true) 3 :> java::lang::Number else 3.0 :> java::lang::Number")))
     (is (= 3.0M (eval-exp "if (false) 3 :> java::lang::Number else 3.0 :> java::lang::Number"))))
