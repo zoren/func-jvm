@@ -67,6 +67,8 @@ tuple_or_paren : '(' (expression (',' expression)*)? ')';
 
 let : 'let' val_decls 'in' expression;
 
+unary_minus : '-' expression;
+
 expression
     : qualified_name
     | constant
@@ -75,7 +77,7 @@ expression
     | let
     | tuple_or_paren
     | '[' (expression (',' expression)*)? ']'
-    | '-' expression
+    | unary_minus
     | expression ('*' | '/') expression
     | expression ('+' | '-') expression
     | expression ('<=' | '>=' | '<' | '>' | '=') expression

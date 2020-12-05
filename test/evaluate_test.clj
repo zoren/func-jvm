@@ -47,6 +47,13 @@
     (is (= 3 (eval-exp "if (true) 3 else 5")))
     (is (= 5 (eval-exp "if (false) 3 else 5"))))
 
+  (testing "unary minus"
+    (is (= -5 (eval-exp "- 5")))
+    (is (= 5 (eval-exp "- -5")))
+    (is (= -5.0M (eval-exp "- 5.0")))
+    (is (= 5.0M (eval-exp "- -5.0")))
+    )
+
   (testing "binary"
     (is (= 11 (eval-exp "5 + 6")))
     (is (= -1 (eval-exp "5 - 6")))

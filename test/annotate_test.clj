@@ -160,6 +160,11 @@
     (is (= Long (pt "let val f = \\x -> x val y = f 1.0 val z = f 1 in z")))
     )
 
+  (testing "unary minus"
+    (is (= Long (pt "- 5")))
+    (is (= BigDecimal (pt "- 5.0")))
+    )
+
   (testing "arithmetic operator"
     (is (= Long (pt "5 + 6")))
     (is (= BigDecimal (pt "5.0 + 6.0")))

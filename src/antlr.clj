@@ -107,6 +107,10 @@
           [:binary-operator (keyword s) (convert-csl-exp t1) (convert-csl-exp t2)]))
       )
 
+    :unary_minus
+    (let [[_ e] args]
+      [:unary-minus (convert-csl-exp e)])
+
     :lambda
     (let [[_backslash & cases] args]
       (when (< 1 (count cases)) (throw (ex-info "only one case supported for now" {:cases cases})))

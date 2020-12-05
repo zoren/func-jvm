@@ -56,6 +56,10 @@
           (eval-annotated-exp env t)
           (eval-annotated-exp env f)))
 
+      :unary-minus
+      (let [[e] args]
+        (- (eval-annotated-exp env e)))
+
       :binary-operator
       (let [[operator e1 e2] args]
         (cond

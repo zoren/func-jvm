@@ -377,6 +377,14 @@
                          (annotated-type annotated-func) :argument-type-no-match)
           (with-type [kind annotated-func annotated-arg] t-res))))
 
+    :unary-minus
+    (let [[e] args
+          ae (annotate-exp context e)
+          t  (annotated-type ae)]
+      (when-not (-> t normalize first #{Long BigDecimal})
+        (error :unary-minus-not-supported-on-type {:t t}))
+      (with-type [kind ae] t))
+
     :binary-operator
     (let [[operator e1 e2] args
           [ae1 ae2] (map (partial annotate-exp context) [e1 e2])
