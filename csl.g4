@@ -79,7 +79,7 @@ expression
     | expression ('*' | '/') expression
     | expression ('+' | '-') expression
     | expression ('<=' | '>=' | '<' | '>' | '=') expression
-    | expression ('&&' | '||') expression // todo remember r-assoc
+    | <assoc=right> expression ('&&' | '||') expression
     | expression expression
     | expression ('.' IDENTIFIER)+
     | expression ':>' type
