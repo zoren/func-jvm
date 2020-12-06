@@ -83,6 +83,8 @@
     (is (= 5 (.apply (eval-exp "\\x->x") 5)))
     (is (= 6 (eval-exp "(\\5 -> 6) 5")))
     (is (thrown? clojure.lang.ExceptionInfo (eval-exp "(\\5 -> 6) 6")))
+    (is (= 20 (eval-exp "(\\5 -> 6 | 10 -> 20) 10")))
+    (is (thrown? clojure.lang.ExceptionInfo (eval-exp "(\\5 -> 6 | 10 -> 20) 11")))
     )
 
   (testing "invoke function"

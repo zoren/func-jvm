@@ -119,6 +119,9 @@
     (is (= Number (pt "4.5 :> java::lang::Number"))))
 
   (testing "lambda"
+    (is (= :argument-pattern-types-differ (pe "\\1 -> 2 | 1.0 -> 2")))
+    (is (= :body-types-differ (pe "\\ 1 -> 2 | 1 -> 2.0")))
+
     (is (= [java.util.function.Function :a :a] (pt "\\x -> x")))
     (is (= [java.util.function.Function :a [Long]] (pt "\\x -> 5")))
     (is (= [java.util.function.Function [Long] [Long]] (pt "\\x -> if (true) x else 5")))
@@ -133,6 +136,8 @@
     #_((fn [f] (if true (f 0) (f 0.0))) identity)
     (is (= [java.util.function.Function [Long] [Long]]
            (pt "\\5 -> 6")))
+    (is (= [java.util.function.Function [Long] [Long]]
+           (pt "\\ _ -> 2 | x -> x")))
     )
 
   (testing "parens"

@@ -100,13 +100,15 @@
       (-> args first env)
 
       :function
-      (let [[parameter-pattern body] args
-            updater (eval-annotated-pattern parameter-pattern)
-            f (fn [argument]
-                (if-let [env1 (updater env argument)]
-                  (eval-annotated-exp env1 body)
-                  (throw (ex-info "pattern did not match" {:pattern parameter-pattern :argument argument}))))]
-        (fn->function f))
+      (fn->function
+       (fn [argument]
+         (loop [cases args]
+           (if (empty? cases)
+             (throw (ex-info "pattern match not exhaustive" {:cases args :argument argument}))
+             (let [[[parameter-pattern body] & cases] cases]
+               (if-let [env1 ((eval-annotated-pattern parameter-pattern) env argument)]
+                 (eval-annotated-exp env1 body)
+                 (recur cases)))))))
 
       :let
       (let [[val-decls body] args

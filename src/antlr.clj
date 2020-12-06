@@ -118,12 +118,10 @@
 
     :lambda
     (let [[_backslash & cases] args]
-      (when (< 1 (count cases)) (throw (ex-info "only one case supported for now" {:cases cases})))
-      (let [case (first cases)
-            [_ pat _arrow body] case
-            cpat (convert-pattern pat)
-            cbody (convert-csl-exp body)]
-        (with-meta [:function cpat cbody] (meta input))))
+      (with-meta (into [:function]
+                       (map (fn [[_ pat _arrow body]]
+                              [(convert-pattern pat) (convert-csl-exp body)]) (skip-odd cases)))
+        (meta input)))
 
     :tuple_or_paren
     (let [[_lpar & elements-separators] (butlast args)

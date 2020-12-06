@@ -263,13 +263,18 @@
       (with-type annotated-exp syntactic-type))
 
     :function
-    (let [[parameter-pattern body] args
-          [pat-vars annotated-pattern] (annotate-pattern context parameter-pattern)
-          context1
-          (reduce (fn [c [v t]] (assoc-variable c v {:t t})) context pat-vars)
-          annotated-body (annotate-exp context1 body)]
-      (with-type [kind annotated-pattern annotated-body]
-        [java.util.function.Function (annotated-type annotated-pattern) (annotated-type annotated-body)]))
+    (let [[ta tr] [(-> context get-level mk-type-var) (-> context get-level mk-type-var)]
+          proc-case
+          (fn [[parameter-pattern body]]
+            (let [[pat-vars annotated-pattern] (annotate-pattern context parameter-pattern)
+                  context1
+                  (reduce (fn [c [v t]] (assoc-variable c v {:t t})) context pat-vars)
+                  annotated-body (annotate-exp context1 body)]
+              (unify-message ta (annotated-type annotated-pattern) :argument-pattern-types-differ)
+              (unify-message tr (annotated-type annotated-body) :body-types-differ)
+              [annotated-pattern annotated-body]))]
+      (with-type (into [kind] (map proc-case args))
+        [java.util.function.Function ta tr]))
 
     :field-access
     (let [[target field-name] args]
