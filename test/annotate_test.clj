@@ -47,14 +47,14 @@
          unwrap-singleton))))
 
 (defn t-error-list [symbol-table exp]
-  (let [errors-atom (atom [])
-        annotated-exp (annotate-exp symbol-table exp)]
-    {:errors @errors-atom :annotated-exp annotated-exp}))
+  (let [annotated-exp (annotate-exp symbol-table exp)]
+    {:errors @annotate/errors :annotated-exp annotated-exp}))
 
 (defn t-error
   ([e] (t-error {} e))
   ([st e]
-   (let [{:keys [errors]} (t-error-list st e)]
+   (let [_ (annotate/reset-errors!)
+         {:keys [errors]} (t-error-list st e)]
      (when (empty? errors) (throw (ex-info "no error" {})))
      (-> errors
          first!
@@ -64,15 +64,23 @@
   ([s] (pt {} s))
   ([st s] (t st (-> s parse-csl-exp))))
 
+(defn pe
+  ([s] (pe {} s))
+  ([st s] (t-error st (-> s parse-csl-exp))))
+
+
 (deftest parse-annotated-exp-test
   (testing "constant"
-    (is (= Boolean (pt "true")))
     (is (= Boolean (pt "false")))
+    (is (= Boolean (pt "true")))
 
     #_    (is (=  (pt "9223372036854775808"))) ;; error then number is larger than
     (is (= Long (pt "0")))
     (is (= Long (pt "1")))
     (is (= Long (pt "123")))
+    (is (= {:clj-antlr/position {:row 0 :column 0 :index 0}
+            :type [Long]}
+           (meta (annotate-exp {} (parse-csl-exp "5")))))
 
     (is (= BigDecimal (pt "0.0")))
     (is (= BigDecimal (pt "1.23")))
@@ -90,18 +98,23 @@
 
     (is (= java.time.Duration (pt "#P1DT2H3M4S#")))
     (is (= java.time.Duration (pt "#-PT42.314S#")))
-    (is (= {:clj-antlr/position {:row 0 :column 0 :index 0}
-            :type [Long]}
-           (meta (annotate-exp {} (parse-csl-exp "5"))))))
+    )
+
+  (testing "if"
+    (is (= :if-cond-not-boolean (pe "if (1) 3 else 5")))
+    (is (= :if-branches-differ (pe "if (true) 3 else 5.0")))
+
+    (is (= Long (pt "if (true) 3 else 5"))))
 
   (testing "variable"
+    (is (= :variable-not-found (pe "noSuchVar")))
+
     (is (= String (pt {"x" {:t [String]}} "x")))
     (is (= Long (pt {["M" "x"] {:t [Long]}} "M::x"))))
 
-  (testing "if"
-    (is (= Long (pt "if (true) 3 else 5"))))
-
   (testing "upcast"
+    (is (= :upcast-invalid (pe "4 :> java::util::List java::lang::Number")))
+
     (is (= Number (pt "4 :> java::lang::Number")))
     (is (= Number (pt "4.5 :> java::lang::Number"))))
 
@@ -114,7 +127,13 @@
     (is (= [java.util.function.Function [experimentation.java.PublicInstanceField] [Long]]
            (pt "\\(o : experimentation::java::PublicInstanceField) -> o.x")))
     (is (= [java.util.function.Function [experimentation.java.PublicInstanceField] [experimentation.java.PublicInstanceField]]
-           (pt "\\(o : experimentation::java::PublicInstanceField) -> o"))))
+           (pt "\\(o : experimentation::java::PublicInstanceField) -> o")))
+    #_(is (= "fail because function parameters have monomorphic type"
+             (pt "\\f -> if(true) f 0 else f 0.0")))
+    #_((fn [f] (if true (f 0) (f 0.0))) identity)
+    (is (= [java.util.function.Function [Long] [Long]]
+           (pt "\\5 -> 6")))
+    )
 
   (testing "parens"
     (is (= Long (pt "5")))
@@ -134,19 +153,32 @@
     (is (= experimentation.java.PublicInstanceField (pt "experimentation::java::PublicInstanceField (3, 42)"))))
 
   (testing "static field"
+    (is (= :field-not-found (pe "java::time::Month.MARIL")))
+
     (is (= java.time.Month (pt "java::time::Month.JULY")))
     )
 
   (testing "instance field"
+    (is (= :field-not-found (pe "(experimentation::java::PublicInstanceField(5, 6)).noSuchField")))
+
     (is (= Long (pt "(experimentation::java::PublicInstanceField(5, 6)).x")))
     (is (= [java.util.function.Function [experimentation.java.PublicInstanceField] [Long]]
-           (pt "\\(o : experimentation::java::PublicInstanceField) -> o.x"))))
+           (pt "\\(o : experimentation::java::PublicInstanceField) -> o.x")))
+    ;; todo
+    #_(is (= Long (pt "(experimentation::java::PublicInstanceField(5, 6)).x.y")))
+    )
 
   (testing "static method"
+    (is (= :method-not-found (pe "java::util::List.noSuchMethod 42")))
+    (is (= :no-method-overload-found (pe "java::lang::Long.getLong (4, 4)")))
+
     (is (= [java.util.List [Long]] (pt "java::util::List.of 42")))
     (is (= [java.util.List [Long]] (pt "java::util::List.of (5, 6)"))))
 
   (testing "instance method"
+    (is (= :method-not-found (pe "23.noSuchMethod ()")))
+    (is (= :no-method-overload-found (pe "java::lang::StringBuilder(\"a\").insert(1, 2)")))
+
     (is (= String (pt "12.toString()"))))
 
   (testing "let"
@@ -161,11 +193,15 @@
     )
 
   (testing "unary minus"
+    (is (= :unary-minus-not-supported-on-type (pe "- \"\"")))
+
     (is (= Long (pt "- 5")))
     (is (= BigDecimal (pt "- 5.0")))
     )
 
   (testing "arithmetic operator"
+    (is (= :no-overload-found (pe "\"abc\" + \"d\"")))
+
     (is (= Long (pt "5 + 6")))
     (is (= BigDecimal (pt "5.0 + 6.0")))
     #_(is (= BigDecimal (pt "5 + 6.0")))
@@ -175,12 +211,16 @@
     )
 
   (testing "comparison operator"
+    (is (= :comparison-does-not-apply (pe "\"abc\" <= \"d\"")))
+
     (is (= Boolean (pt "5 < 6")))
     (is (= Boolean (pt "5.0 < 6.0")))
     #_(is (= Boolean (pt "#2020-01-01T00:00:00Z# < #2020-01-01T00:00:00Z#")))
     )
 
   (testing "logic operator"
+    (is (= :logical-operator-on-non-boolean (pe "\"abc\" && \"d\"")))
+
     (is (= Boolean (pt "true && false")))
     (is (= Boolean (pt "true || false")))
     )

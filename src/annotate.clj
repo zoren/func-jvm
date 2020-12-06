@@ -153,7 +153,7 @@
                                    (= [(wrap-primitive-types (.getParameterizedType param))] (normalize ta)))
                                  (map vector (.getParameters method) arg-types)))) arity-methods)]
           (case (count type-filtered-methods)
-            0 (error :method-not-found {:arity arity-methods})
+            0 (error :no-method-overload-found {:arity arity-methods})
             1 (first type-filtered-methods)
             (error :ambiguous-method-signature {:method-candidates arity-methods})))))))
 
@@ -229,6 +229,7 @@
     :constant
     (with-type exp (-> args first type))
 
+    ;; we have no syntax for this so maybe remove it?
     :class
     (let [[class-name] args
           class-obj (try-get-class class-name)]
@@ -257,7 +258,8 @@
           ann-type (annotate-type t)
           syntactic-type (annotated-type ann-type)
           inferred-type (normalize (annotated-type annotated-exp))]
-      ((assert-sub-type error) syntactic-type inferred-type)
+      (when (and syntactic-type inferred-type)
+        ((assert-sub-type error) syntactic-type inferred-type))
       (with-type annotated-exp syntactic-type))
 
     :function
@@ -280,14 +282,14 @@
                                  (annotate-exp context target))
               target-class (-> annotated-target annotated-type normalize first)
               field (get-field target-class field-name)
-              t (java-generic-type->type (.getGenericType field))]
+              t (when field (java-generic-type->type (.getGenericType field)))]
           (with-type [(if class-obj :get-static-field :get-instance-field) annotated-target field-name] t {:field field}))
 
         (let [annotated-target (annotate-exp context target)
               t (annotated-type annotated-target)
               nt (normalize t)
               field (get-field (first nt) field-name)
-              ft (java-generic-type->type (.getGenericType field))]
+              ft (when field (java-generic-type->type (.getGenericType field)))]
           (with-type [:get-instance-field annotated-target field-name] ft {:field field}))))
 
     :let
@@ -398,19 +400,19 @@
           (cond
             (#{:+ :- :* :/} operator)
             (do
-              (when-not (#{[Long] [BigDecimal]} operator-t)
+              (when-not (#{Long BigDecimal} (first operator-t))
                 (error :no-overload-found {:operand-type operator-t}))
               operator-t)
 
             (#{:<= :>= :< :> :=} operator)
             (do
-              (when-not (#{Long BigDecimal java.time.Instant} (first operator-t))
+              (when-not (#{Long BigDecimal #_ java.time.Instant} (first operator-t))
                 (error :comparison-does-not-apply {:operand-type operator-t}))
               [Boolean])
 
             (#{:&& :||} operator)
             (do
-              (when-not (= [Boolean] operator-t)
+              (when-not (= Boolean (first operator-t))
                 (error :logical-operator-on-non-boolean {:operand-type operator-t}))
               [Boolean])
 
