@@ -72,7 +72,7 @@
 
   ;; level out
   (let [level @(:level tv)]
-    (doseq [tv (distinct (type-vars t))]
+    (doseq [tv (type-vars t)]
       (swap! (:level tv) (partial min level))))
 
   (reset! (:link tv) t))
