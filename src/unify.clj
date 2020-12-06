@@ -81,10 +81,10 @@
   (let [[nt1 nt2] (map normalize [t1 t2])]
     (cond
       (and (type-var? nt1) (type-var? nt2))
-      (when-not (= t1 t2)
-        (if (< @(:level t1) @(:level t2))
-          (link-type-var-to-type t1 nt2)
-          (link-type-var-to-type t2 nt1)))
+      (when-not (= nt1 nt2)
+        (if (< @(:level nt1) @(:level nt2))
+          (link-type-var-to-type nt1 nt2)
+          (link-type-var-to-type nt2 nt1)))
 
       (and (type-var? nt1) (type? nt2))
       (link-type-var-to-type t1 nt2)
