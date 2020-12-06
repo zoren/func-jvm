@@ -83,7 +83,7 @@ expression
     | expression ('<=' | '>=' | '<' | '>' | '=') expression
     | <assoc=right> expression ('&&' | '||') expression
     | expression expression
-    | expression ('.' IDENTIFIER)+
+    | expression '.' IDENTIFIER
     | expression ':>' type
 ;
 
