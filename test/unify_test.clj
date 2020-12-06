@@ -14,4 +14,23 @@
       (unify x r)
       (is (apply = (map normalize [x a r]))))
     )
+
+  (testing "check unify does not overwrite links with types and order doesn't matter"
+    (let [[f x a r] [(mk-type-var 0) (mk-type-var 0) (mk-type-var 0) (mk-type-var 0)]]
+      (unify a f)
+      (unify r [Long])
+      (unify a x)
+      (unify r x)
+
+      (is (= [Long] (normalize f)))
+      (is (= [Long] (normalize a))))
+    (let [[f x a r] [(mk-type-var 0) (mk-type-var 0) (mk-type-var 0) (mk-type-var 0)]]
+      (unify a f)
+      (unify [Long] r)
+      (unify a x)
+      (unify r x)
+
+      (is (= [Long] (normalize f)))
+      (is (= [Long] (normalize a))))
+    )
   )

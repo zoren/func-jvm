@@ -87,10 +87,10 @@
           (link-type-var-to-type nt2 nt1)))
 
       (and (type-var? nt1) (type? nt2))
-      (link-type-var-to-type t1 nt2)
+      (link-type-var-to-type nt1 nt2)
 
       (and (type? nt1) (type-var? nt2))
-      (link-type-var-to-type t2 nt1)
+      (link-type-var-to-type nt2 nt1)
 
       (and (type? nt1) (type? nt2))
       (do
