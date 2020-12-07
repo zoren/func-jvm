@@ -78,27 +78,27 @@
   (reset! (:link tv) t))
 
 (defn unify [t1 t2]
-  (let [[nt1 nt2] (map normalize [t1 t2])]
+  (let [[t1 t2] [(normalize t1) (normalize t2)]]
     (cond
-      (and (type-var? nt1) (type-var? nt2))
-      (when-not (= nt1 nt2)
-        (if (< @(:level nt1) @(:level nt2))
-          (link-type-var-to-type nt1 nt2)
-          (link-type-var-to-type nt2 nt1)))
+      (and (type-var? t1) (type-var? t2))
+      (when-not (= t1 t2)
+        (if (< @(:level t1) @(:level t2))
+          (link-type-var-to-type t1 t2)
+          (link-type-var-to-type t2 t1)))
 
-      (and (type-var? nt1) (type? nt2))
-      (link-type-var-to-type nt1 nt2)
+      (and (type-var? t1) (type? t2))
+      (link-type-var-to-type t1 t2)
 
-      (and (type? nt1) (type-var? nt2))
-      (link-type-var-to-type nt2 nt1)
+      (and (type? t1) (type-var? t2))
+      (link-type-var-to-type t2 t1)
 
-      (and (type? nt1) (type? nt2))
+      (and (type? t1) (type? t2))
       (do
-        (when-not (= (first nt1) (first nt2))
-          (throw (ex-info "types differ" {:t1 nt1 :t2 nt2})))
-        (when-not (= (count nt1) (count nt2))
-          (throw (ex-info "type arity mismatch" {:t1 nt1 :t2 nt2})))
-        (doseq [[ta1 ta2] (map vector (rest nt1) (rest nt2))]
+        (when-not (= (first t1) (first t2))
+          (throw (ex-info "types differ" {:t1 t1 :t2 t2})))
+        (when-not (= (count t1) (count t2))
+          (throw (ex-info "type arity mismatch" {:t1 t1 :t2 t2})))
+        (doseq [[ta1 ta2] (map vector (rest t1) (rest t2))]
           (unify ta1 ta2)))
 
       :else
