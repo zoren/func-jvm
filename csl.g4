@@ -57,34 +57,24 @@ pattern
     | '[' (pattern (',' pattern)*)? ']'
 ;
 
-if_exp : 'if' '(' expression ')' expression 'else' expression;
-
 lambda_case : pattern '->' expression;
 
-lambda : '\\' lambda_case ('|' lambda_case)*;
-
-tuple_or_paren : '(' (expression (',' expression)*)? ')';
-
-let : 'let' val_decls 'in' expression;
-
-unary_minus : '-' expression;
-
 expression
-    : qualified_name
-    | constant
-    | if_exp
-    | lambda
-    | let
-    | tuple_or_paren
-    | '[' (expression (',' expression)*)? ']'
-    | unary_minus
-    | expression ('*' | '/') expression
-    | expression ('+' | '-') expression
-    | expression ('<=' | '>=' | '<' | '>' | '=') expression
-    | <assoc=right> expression ('&&' | '||') expression
-    | expression expression
-    | expression '.' IDENTIFIER
-    | expression ':>' type
+    : expression ('*' | '/') expression # binary_expression
+    | expression ('+' | '-') expression # binary_expression
+    | expression ('<=' | '>=' | '<' | '>' | '=') expression # binary_expression
+    | <assoc=right> expression ('&&' | '||') expression # binary_expression
+    | expression expression # apply
+    | qualified_name # var_or_const
+    | constant # constant_exp
+    | 'if' '(' expression ')' expression 'else' expression # if_exp
+    | '\\' lambda_case ('|' lambda_case)* # lambda
+    | 'let' val_decls 'in' expression # let
+    | '(' (expression (',' expression)*)? ')' # tuple_or_paren
+    | '[' (expression (',' expression)*)? ']' # list_exp
+    | '-' expression # unary_minus
+    | expression '.' IDENTIFIER # field_access_exp
+    | expression ':>' type # upcast_annotation_exp
 ;
 
 qualified_name : IDENTIFIER ('::' IDENTIFIER)*;

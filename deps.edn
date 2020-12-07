@@ -1,7 +1,7 @@
 {:deps
  {experimentation.java/experimentation.java
   {:local/root "java/experimentation.jar"}
-  clj-antlr/clj-antlr {:mvn/version "0.2.7"}
+  clj-antlr/clj-antlr {:local/root "libs/clj-antlr-0.2.8-SNAPSHOT.jar"}
   }
  :aliases
  {:test
