@@ -41,20 +41,13 @@ type
     | type '->' type
 ;
 
-wildcard : '_';
-
-pattern_identifier : IDENTIFIER;
-
-pattern_tuple_or_paren : '(' (pattern (',' pattern)*)? ')';
-
 pattern
-    : wildcard
-    | pattern_identifier
-    | pattern ':' type
-    | constant
-    | qualified_name pattern*
-    | pattern_tuple_or_paren
-    | '[' (pattern (',' pattern)*)? ']'
+    : '_' # wildcard
+    | IDENTIFIER # pattern_identifier
+    | pattern ':' type # type_annotation_pattern
+    | constant # constant_pattern
+//    | qualified_name pattern*
+    | '(' (pattern (',' pattern)*)? ')' # tuple_or_paren_pattern
 ;
 
 lambda_case : pattern '->' expression;
@@ -70,7 +63,7 @@ expression
     | 'if' '(' expression ')' expression 'else' expression # if_exp
     | '\\' lambda_case ('|' lambda_case)* # lambda
     | 'let' val_decls 'in' expression # let
-    | '(' (expression (',' expression)*)? ')' # tuple_or_paren
+    | '(' (expression (',' expression)*)? ')' # tuple_or_paren_exp
     | '[' (expression (',' expression)*)? ']' # list_exp
     | '-' expression # unary_minus
     | expression '.' IDENTIFIER # field_access_exp

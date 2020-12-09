@@ -44,43 +44,44 @@
 
 (def antlr-parse-csl-type (a/parser "csl.g4" {:root "type_eof"}))
 
-(defn convert-pattern [[_pattern [kind & args :as input] :as total]]
-  (case kind
-    :wildcard
-    (with-meta [:wildcard] (meta input))
+(defn convert-pattern [[kind & args :as input]]
+  (->
+   (case kind
+     :wildcard
+     [:wildcard]
 
-    :pattern_identifier
-    (let [[var] args]
-      (with-meta [:pattern-identifier var] (meta input)))
+     :pattern_identifier
+     (let [[var] args]
+       [:pattern-identifier var])
 
-    :pattern_tuple_or_paren
-    (let [[_lpar & elements-separators] (butlast args)
-          elements (skip-odd elements-separators)]
-      (if (= (count elements) 1)
-        (-> elements first convert-pattern)
-        (throw (ex-info "todo tuples" {}))
-        #_        (with-meta (into [:tuple] (map convert-csl-exp elements)) (meta input))))
+     :constant_pattern
+     (let [[[_ s]] args
+           value (convert-constant s)]
+       [:constant value])
 
-    :pattern
-    (case (count total)
-      4
-      (let [[_ pat _colon type] total]
-        [:type-annotation (convert-pattern pat) (convert-type type)])
+     :tuple_or_paren_pattern
+     (let [[_lpar & elements-separators] (butlast args)
+           elements (map convert-pattern (skip-odd elements-separators))]
+       (if (= (count elements) 1)
+         (first elements)
+         (into [:tuple] elements)))
 
-      (throw (ex-info "convert-pattern: unknown pattern kind" {:total total})))
+     :type_annotation_pattern
+     (let [[pat _colon type] args]
+       [:type-annotation (convert-pattern pat) (convert-type type)])
 
-    :constant
-    (let [[s] args
-          value (convert-constant s)]
-      (with-meta [kind value] (meta input)))
+     (throw (ex-info "convert-pattern: unknown pattern kind" {:kind kind})))
 
-    (throw (ex-info "convert-pattern: unknown pattern kind" {:kind kind}))))
+   (with-meta (meta input))))
+
+(def antlr-parse-pattern (a/parser "csl.g4" {:root "pattern_eof" :use-alternates? true}))
+(defn parse-pattern [s] (-> s antlr-parse-pattern second convert-pattern))
 
 (defn- convert-csl-exp [[kind & args :as input]]
   (case kind
     :constant_exp
-    (let [[[_ c]] args
-          value (convert-constant c)]
+    (let [[[_ s]] args
+          value (convert-constant s)]
       (with-meta [:constant value] (meta input)))
 
     :var_or_const
@@ -119,7 +120,7 @@
                               [(convert-pattern pat) (convert-csl-exp body)]) (skip-odd cases)))
         (meta input)))
 
-    :tuple_or_paren
+    :tuple_or_paren_exp
     (let [[_lpar & elements-separators] (butlast args)
           elements (skip-odd elements-separators)]
       (if (= (count elements) 1)
