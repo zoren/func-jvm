@@ -35,10 +35,14 @@ constant
     | POUND_CONSTANT
 ;
 
+type_atom
+    : qualified_name # type_var
+    | '(' type ')' # paren_type
+;
+
 type
-    : qualified_name type*
-    | '(' type ')'
-    | type '->' type
+    : qualified_name type_atom* # type_var_apply
+    | type ('->' type)+ # function_type
 ;
 
 pattern

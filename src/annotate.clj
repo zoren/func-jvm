@@ -168,15 +168,23 @@
   (when (or (not (vector? t)) (empty? t))
     (throw (ex-info "annotate-type: unknown type format" {:type t})))
   (let [[qname & args] t
-        class-name (clojure.string/join "." qname)
-        class-obj (try-get-class class-name)
-        _ (if class-obj
-            (when-not (= (count (.getTypeParameters class-obj)) (count args))
-              (error :type-arity-mismatch {:params (.getTypeParameters class-obj) :args args}))
-            (error :class-not-found {:name class-name}))
+        type
+        (if (= qname ["Tuple"])
+          (do
+            (when (= (count args) 1)
+              (error :tuple-cannot-have-arity-one {:args args}))
+            :tuple)
+
+          (let [type-name (clojure.string/join "." qname)
+                class-obj (try-get-class type-name)
+                _ (if class-obj
+                    (when-not (= (count (.getTypeParameters class-obj)) (count args))
+                      (error :type-arity-mismatch {:params (.getTypeParameters class-obj) :args args}))
+                    (error :type-not-found {:name type-name}))]
+            class-obj))
         annotated-args (map annotate-type args)]
 
-    (with-type (into [class-name] annotated-args) (into [class-obj] (map annotated-type annotated-args)))))
+    (with-type (into [qname] annotated-args) (into [type] (map annotated-type annotated-args)))))
 
 ;; https://www.logicbig.com/how-to/code-snippets/jcode-reflection-class-isassignablefrom.html
 ;; Object[] isAssignableFrom Integer[]: true
@@ -219,7 +227,15 @@
     :constant
     (let [[c] args]
       [{} (with-type [kind c] (type c))])
-    ))
+
+    :tuple
+    (let [[env pats]
+          (reduce (fn [[env acc-pats] elem-pat]
+                    (let [[elem-env a-elem-pat] (annotate-pattern context elem-pat)]
+                      [(merge env elem-env) (conj acc-pats a-elem-pat)]))
+                  [{} []]
+                  args)]
+      [env (with-type (into [:tuple] pats) (into [:tuple] (map annotated-type pats)))])))
 
 (defn get-field [target-class field-name]
   (or (try-get-field target-class field-name) (error :field-not-found)))
@@ -425,6 +441,10 @@
             (throw (ex-info "unknown operator" {:operator operator}))
             )]
       (with-type [kind operator ae1 ae2] result-type))
+
+    :tuple
+    (let [a-exps (map (partial annotate-exp context) args)]
+      (with-type (into [kind] a-exps) (into [:tuple] (map annotated-type a-exps))))
 
     (throw (ex-info "annotate-exp: unknown exp type" {:kind kind :exp exp}))))
 

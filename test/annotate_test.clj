@@ -3,8 +3,10 @@
    [clojure.test :refer [deftest is testing]]
    [annotate :refer [annotate-exp annotated-type annotate-type]]
    [unify :refer [normalize renumber]]
-   [antlr :refer [parse-csl-exp]]
+   [antlr :refer [parse-csl-exp parse-csl-type]]
    )
+  (:import
+   [java.util.function Function])
   )
 
 (defn first! [s]
@@ -22,17 +24,28 @@
   ([m] (throw-error m {}))
   ([m a] (throw (ex-info (name m) a))))
 
-(defn at [t] (annotated-type ((annotate-type throw-error) t)))
-
-(defn at-error [t]
-  (let [{:keys [error errors-atom]} (mk-error-lister)]
-    (annotated-type ((annotate-type error) t))
-    (-> @errors-atom first :message)))
-
 (defn unwrap-singleton [s]
   (if (and (vector? s) (= (count s) 1))
     (first s)
     s))
+
+(defn at [t] (-> t
+                 parse-csl-type
+                 annotate-type
+                 annotated-type
+                 unwrap-singleton))
+
+(defn at-error [t]
+  (let [_ (annotate/reset-errors!)
+        _ (-> t
+              parse-csl-type
+              annotate-type)
+        errors @annotate/errors
+        ]
+    (when (empty? errors) (throw (ex-info "no error" {})))
+    (-> errors
+        first!
+        :message)))
 
 (defn t
   ([e] (t {} e))
@@ -68,6 +81,15 @@
   ([s] (pe {} s))
   ([st s] (t-error st (-> s parse-csl-exp))))
 
+(deftest type-test
+  (is (= :type-not-found (at-error "NoSuchType")))
+  (is (= :type-arity-mismatch (at-error "java::util::List")))
+  (is (= :type-arity-mismatch (at-error "java::util::List java::lang::Number java::lang::String")))
+  (is (= :tuple-cannot-have-arity-one (at-error "Tuple java::lang::Long")))
+
+  (is (= Long (at "java::lang::Long")))
+  (is (= [java.util.List [Long]] (at "java::util::List java::lang::Long")))
+  (is (= [java.util.Map [Number] [String]] (at "java::util::Map java::lang::Number java::lang::String"))))
 
 (deftest parse-annotated-exp-test
   (testing "constant"
@@ -118,6 +140,18 @@
     (is (= Number (pt "4 :> java::lang::Number")))
     (is (= Number (pt "4.5 :> java::lang::Number"))))
 
+  (testing "tuple"
+    (is (= Long (pt "(3)")))
+
+    (is (= :tuple (pt "()")))
+    (is (= [:tuple [Long] [BigDecimal]] (pt "(2, 3.0)")))
+    (is (= [:tuple [Long] [Long] [Long]] (pt "(2, 3, 4)")))
+    ;; (is (= [:tuple [Long] [Long] (pt "\\(x, y) : Tuple java::lang::Long java::lang::Long -> x + y")))
+    ;; (is (= [:tuple [Long] [Long] [Long]] (pt "\\(x, y) : Tuple java::lang::Long java::lang::Long -> x + y")))
+    (is (= [Function [Long] [Long]] (pt "\\x : java::lang::Long -> x + 7")))
+    (is (= [Function [:tuple [Long] [Long]] [Long]]
+           (pt "\\(x, y) : Tuple java::lang::Long java::lang::Long -> x"))))
+
   (testing "lambda"
     (is (= :argument-pattern-types-differ (pe "\\1 -> 2 | 1.0 -> 2")))
     (is (= :body-types-differ (pe "\\ 1 -> 2 | 1 -> 2.0")))
@@ -138,6 +172,7 @@
            (pt "\\5 -> 6")))
     (is (= [java.util.function.Function [Long] [Long]]
            (pt "\\ _ -> 2 | x -> x")))
+    (is (= Long (pt "(\\ (x, y) -> x) (2, 3.0)")))
     )
 
   (testing "parens"

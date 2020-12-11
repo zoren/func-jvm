@@ -34,15 +34,27 @@
   (let [names (skip-odd names-seps)]
     (if (= (count names) 1) (first names) (into [] names))))
 
-(defn convert-type [[_ & t]]
-  (cond
-    (= (ffirst t) :qualified_name)
-    (into [(-> t first rest skip-odd)] (map convert-type (rest t)))
+(defn convert-type [[kind & args]]
+  (case kind
+    ;; :function_type
+    ;; (into [(-> t first rest skip-odd)] (map convert-type args))
 
-    :else
-    (throw (ex-info "convert-type: unknown exp type" {:t t}))))
+    :type_var_apply
+    (let [[t-name & t-args] args]
+      (into [(apply vector (-> t-name rest skip-odd))] (map convert-type t-args)))
 
-(def antlr-parse-csl-type (a/parser "csl.g4" {:root "type_eof"}))
+    :function_type
+    (into [])
+
+    :type_var
+    [(apply vector (-> args first rest skip-odd))]
+    :paren_type
+    (let [[_ t _] args]
+      (-> t convert-type))
+    :type_atom
+    (-> args first convert-type)
+
+    (throw (ex-info "convert-type: unknown type kind" {:kind kind}))))
 
 (defn convert-pattern [[kind & args :as input]]
   (->

@@ -16,7 +16,20 @@
 
     :constant
     (let [[c] args]
-      (fn [env argument] (when (= c argument) env)))))
+      (fn [env argument] (when (= c argument) env)))
+
+    :tuple
+    (let [fs (map eval-annotated-pattern args)]
+      (fn [env argument]
+        (reduce
+         (fn [env [elem-func elem-value]]
+           (if-let [elem-env (elem-func env elem-value)]
+             elem-env
+             (reduced nil)))
+         env
+         (map vector fs argument))))
+
+    (throw (ex-info "eval-annotated-pattern: unknown pattern type" {:pattern kind}))))
 
 (defn eval-annotated-exp [env [kind & args :as exp]]
   (let [eval-args (fn [args] (into-array Object (map (partial eval-annotated-exp env) args)))]
@@ -124,6 +137,9 @@
       :invoke-function
       (let [[func arg] args]
         (.apply (eval-annotated-exp env func) (eval-annotated-exp env arg)))
+
+      :tuple
+      (into [] (map (partial eval-annotated-exp env) args))
 
       (throw (ex-info "eval-exp: unknown exp type" {:exp exp})))))
 
