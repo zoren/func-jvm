@@ -56,6 +56,9 @@
 
     (throw (ex-info "convert-type: unknown type kind" {:kind kind}))))
 
+(def antlr-parse-type (a/parser "csl.g4" {:root "type_eof" :use-alternates? true}))
+(defn parse-type [s] (-> s antlr-parse-type second convert-type))
+
 (defn convert-pattern [[kind & args :as input]]
   (->
    (case kind
@@ -89,7 +92,7 @@
 (def antlr-parse-pattern (a/parser "csl.g4" {:root "pattern_eof" :use-alternates? true}))
 (defn parse-pattern [s] (-> s antlr-parse-pattern second convert-pattern))
 
-(defn- convert-csl-exp [[kind & args :as input]]
+(defn- convert-exp [[kind & args :as input]]
   (case kind
     :constant_exp
     (let [[[_ s]] args
@@ -103,59 +106,59 @@
 
     :if_exp
     (let [[_if _lpar cond _rpar then _else else] args]
-      (with-meta [:if (convert-csl-exp cond) (convert-csl-exp then) (convert-csl-exp else)] (meta input)))
+      (with-meta [:if (convert-exp cond) (convert-exp then) (convert-exp else)] (meta input)))
 
     :binary_expression
     (let [[_ t1 s t2] input]
-      [:binary-operator (keyword s) (convert-csl-exp t1) (convert-csl-exp t2)])
+      [:binary-operator (keyword s) (convert-exp t1) (convert-exp t2)])
 
     :apply
     (let [[_ t1 t2] input]
-      [:invoke-function (convert-csl-exp t1) (convert-csl-exp t2)])
+      [:invoke-function (convert-exp t1) (convert-exp t2)])
 
     :upcast_annotation_exp
     (let [[_ t1 _ t2] input]
-      [:upcast (convert-csl-exp t1) (convert-type t2)])
+      [:upcast (convert-exp t1) (convert-type t2)])
 
     :field_access_exp
     (let [[_ t1 _ field-name] input]
-      [:field-access (convert-csl-exp t1) field-name])
+      [:field-access (convert-exp t1) field-name])
 
     :unary_minus
     (let [[_ e] args]
-      [:unary-minus (convert-csl-exp e)])
+      [:unary-minus (convert-exp e)])
 
     :lambda
     (let [[_backslash & cases] args]
       (with-meta (into [:function]
                        (map (fn [[_ pat _arrow body]]
-                              [(convert-pattern pat) (convert-csl-exp body)]) (skip-odd cases)))
+                              [(convert-pattern pat) (convert-exp body)]) (skip-odd cases)))
         (meta input)))
 
     :tuple_or_paren_exp
     (let [[_lpar & elements-separators] (butlast args)
           elements (skip-odd elements-separators)]
       (if (= (count elements) 1)
-        (-> elements first convert-csl-exp)
-        (with-meta (into [:tuple] (map convert-csl-exp elements)) (meta input))))
+        (-> elements first convert-exp)
+        (with-meta (into [:tuple] (map convert-exp elements)) (meta input))))
 
     :let
     (let [[_let [_ & val_decls] _in body] args]
       (with-meta [:let
-                  (map (fn [[_ _ pat _ exp]] [(convert-pattern pat) (convert-csl-exp exp)]) val_decls)
-                  (convert-csl-exp body)] (meta input)))
+                  (map (fn [[_ _ pat _ exp]] [(convert-pattern pat) (convert-exp exp)]) val_decls)
+                  (convert-exp body)] (meta input)))
 
-    (throw (ex-info "convert-csl-exp: unknown exp type" {:kind kind :args args :c (count input)}))
+    (throw (ex-info "convert-exp: unknown exp type" {:kind kind :args args :c (count input)}))
     ))
 
 (defn convert-tld [[_ [kind & args :as input]]]
   (case kind
     :val_decl
     (let [[_val pat _eq exp] args]
-      (with-meta [:val-decl (convert-pattern pat) (convert-csl-exp exp)] (meta input)))))
+      (with-meta [:val-decl (convert-pattern pat) (convert-exp exp)] (meta input)))))
 
-(def antlr-parse-csl-exp (a/parser "csl.g4" {:root "expression_eof" :use-alternates? true}))
-(defn parse-csl-exp [s] (-> s antlr-parse-csl-exp second convert-csl-exp))
+(def antlr-parse-exp (a/parser "csl.g4" {:root "expression_eof" :use-alternates? true}))
+(defn parse-exp [s] (-> s antlr-parse-exp second convert-exp))
 
 (def top-level-parser (a/parser "csl.g4"))
 (defn parse-top-level [s] (map convert-tld (-> s top-level-parser butlast rest)))

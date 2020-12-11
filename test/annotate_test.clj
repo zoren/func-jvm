@@ -3,7 +3,7 @@
    [clojure.test :refer [deftest is testing]]
    [annotate :refer [annotate-exp annotated-type annotate-type]]
    [unify :refer [normalize renumber]]
-   [antlr :refer [parse-csl-exp parse-csl-type]]
+   [antlr :refer [parse-exp parse-type]]
    )
   (:import
    [java.util.function Function])
@@ -30,7 +30,7 @@
     s))
 
 (defn at [t] (-> t
-                 parse-csl-type
+                 parse-type
                  annotate-type
                  annotated-type
                  unwrap-singleton))
@@ -38,7 +38,7 @@
 (defn at-error [t]
   (let [_ (annotate/reset-errors!)
         _ (-> t
-              parse-csl-type
+              parse-type
               annotate-type)
         errors @annotate/errors
         ]
@@ -75,11 +75,11 @@
 
 (defn pt
   ([s] (pt {} s))
-  ([st s] (t st (-> s parse-csl-exp))))
+  ([st s] (t st (-> s parse-exp))))
 
 (defn pe
   ([s] (pe {} s))
-  ([st s] (t-error st (-> s parse-csl-exp))))
+  ([st s] (t-error st (-> s parse-exp))))
 
 (deftest type-test
   (is (= :type-not-found (at-error "NoSuchType")))
@@ -102,7 +102,7 @@
     (is (= Long (pt "123")))
     (is (= {:clj-antlr/position {:row 0 :column 0 :index 0}
             :type [Long]}
-           (meta (annotate-exp {} (parse-csl-exp "5")))))
+           (meta (annotate-exp {} (parse-exp "5")))))
 
     (is (= BigDecimal (pt "0.0")))
     (is (= BigDecimal (pt "1.23")))

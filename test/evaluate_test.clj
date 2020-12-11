@@ -2,12 +2,12 @@
   (:require
    [clojure.test :refer [deftest is testing]]
    [annotate :refer [annotate-exp]]
-   [antlr :refer [parse-csl-exp]]
+   [antlr :refer [parse-exp]]
    [evaluate :refer [eval-annotated-exp]]
    ))
 
 (defn eval-exp [s]
-  (eval-annotated-exp {} (annotate-exp {} (parse-csl-exp s))))
+  (eval-annotated-exp {} (annotate-exp {} (parse-exp s))))
 
 (deftest expression-test
   (testing "constants"
