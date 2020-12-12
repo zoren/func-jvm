@@ -56,9 +56,6 @@
 
     (throw (ex-info "convert-type: unknown type kind" {:kind kind}))))
 
-(def antlr-parse-type (a/parser "csl.g4" {:root "type_eof" :use-alternates? true}))
-(defn parse-type [s] (-> s antlr-parse-type second convert-type))
-
 (defn convert-pattern [[kind & args :as input]]
   (->
    (case kind
@@ -88,9 +85,6 @@
      (throw (ex-info "convert-pattern: unknown pattern kind" {:kind kind})))
 
    (with-meta (meta input))))
-
-(def antlr-parse-pattern (a/parser "csl.g4" {:root "pattern_eof" :use-alternates? true}))
-(defn parse-pattern [s] (-> s antlr-parse-pattern second convert-pattern))
 
 (defn- convert-exp [[kind & args :as input]]
   (case kind
@@ -148,8 +142,7 @@
                   (map (fn [[_ _ pat _ exp]] [(convert-pattern pat) (convert-exp exp)]) val_decls)
                   (convert-exp body)] (meta input)))
 
-    (throw (ex-info "convert-exp: unknown exp type" {:kind kind :args args :c (count input)}))
-    ))
+    (throw (ex-info "convert-exp: unknown exp type" {:kind kind :args args :c (count input)}))))
 
 (defn convert-tld [[_ [kind & args :as input]]]
   (case kind
@@ -157,8 +150,16 @@
     (let [[_val pat _eq exp] args]
       (with-meta [:val-decl (convert-pattern pat) (convert-exp exp)] (meta input)))))
 
-(def antlr-parse-exp (a/parser "csl.g4" {:root "expression_eof" :use-alternates? true}))
+(defn make-parser [options] (a/parser "lang.g4" (merge {:use-alternates? true} options)))
+
+(def antlr-parse-type (make-parser {:root "type_eof"}))
+(defn parse-type [s] (-> s antlr-parse-type second convert-type))
+
+(def antlr-parse-pattern (make-parser {:root "pattern_eof"}))
+(defn parse-pattern [s] (-> s antlr-parse-pattern second convert-pattern))
+
+(def antlr-parse-exp (make-parser {:root "expression_eof"}))
 (defn parse-exp [s] (-> s antlr-parse-exp second convert-exp))
 
-(def top-level-parser (a/parser "csl.g4"))
+(def top-level-parser (make-parser {:root "source_text"}))
 (defn parse-top-level [s] (map convert-tld (-> s top-level-parser butlast rest)))

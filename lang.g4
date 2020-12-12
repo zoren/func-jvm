@@ -1,4 +1,4 @@
-grammar csl;
+grammar lang;
 
 source_text
     : top_level_decl* EOF
