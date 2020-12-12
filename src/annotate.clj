@@ -5,22 +5,10 @@
    )
   )
 
-(defn check-class [class-name]
-  (try
-    (Class/forName class-name)
-    (catch java.lang.ClassNotFoundException e
-      (throw (ex-info "class not found" {:class-name class-name :ex e})))))
-
 (defn try-get-class [class-name]
   (try
     (Class/forName class-name)
     (catch java.lang.ClassNotFoundException _ nil)))
-
-(defn check-constructor [class-obj parameter-types]
-  (try
-    (.getConstructor class-obj (into-array Class parameter-types))
-    (catch java.lang.NoSuchMethodException e
-      (throw (ex-info "constructor not found" {:ex e})))))
 
 (defn try-get-constructor [class-obj parameter-types]
   (try
@@ -40,7 +28,7 @@
    })
 
 (defn wrap-primitive-types [t]
-  (if (and (vector? t) (= 1 (count t)))
+  (if (and (vector? t) (= (count t) 1))
     [(primitive-type->wrapper (first t) (first t))]
     (primitive-type->wrapper t t)))
 
