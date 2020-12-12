@@ -19,9 +19,10 @@
     s))
 
 (defn run-errors [f]
-  (let [_ (annotate/reset-errors!)
+  (let [errors-atom (atom [])
+        _ (annotate/set-error-reporter (fn [message] (swap! errors-atom conj message)))
         v (f)]
-    [@annotate/errors v]))
+    [@errors-atom v]))
 
 (defn at [s]
   (let [[errors v] (run-errors #(annotate-type (parse-type s)))]
@@ -52,7 +53,7 @@
   ([s] (pt {} s))
   ([st s]
    (let [[errors annotated-exp] (run-errors #(annotate-exp {:st st} (parse-exp s)))]
-     (when-not (empty? errors) (throw (ex-info "annotate error" {:error @annotate/errors})))
+     (when-not (empty? errors) (throw (ex-info "annotate error" {:error errors})))
      (-> annotated-exp
          annotated-type
          normalize

@@ -123,17 +123,16 @@
                                                          [(wrap-primitive-types t)]
                                                          (wrap-primitive-types t))} additionals))))
 
-(def errors (atom []))
+(def *report-error (fn [_]))
+
+(defn set-error-reporter [reporter]
+  (def *report-error reporter))
 
 (defn error
   ([msg] (error msg {}))
-  ([msg args] (swap! errors conj (assoc args :message msg)) nil))
-
-(defn reset-errors! [] (reset! errors []))
-
-(comment
-  (reset! errors [])
-  )
+  ([msg args]
+   (*report-error (assoc args :message msg))
+   nil))
 
 (defn try-get-method [class-obj method-name arg-types]
   (let [arity-methods (if class-obj
