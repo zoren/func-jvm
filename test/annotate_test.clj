@@ -18,66 +18,55 @@
     (first s)
     s))
 
-(defn at [t] (-> t
-                 parse-type
-                 annotate-type
-                 annotated-type
-                 unwrap-singleton))
+(defn run-errors [f]
+  (let [_ (annotate/reset-errors!)
+        v (f)]
+    [@annotate/errors v]))
+
+(defn at [s]
+  (let [[errors v] (run-errors #(annotate-type (parse-type s)))]
+    (when-not (empty? errors) (throw (ex-info "errors" {:errors errors})))
+    (-> v annotated-type unwrap-singleton)))
 
 (defn at-error [t]
-  (let [_ (annotate/reset-errors!)
-        _ (-> t
-              parse-type
-              annotate-type)
-        errors @annotate/errors]
+  (let [[errors _] (run-errors #(-> t
+                                    parse-type
+                                    annotate-type))]
     (when (empty? errors) (throw (ex-info "no error" {})))
     (-> errors
         first!
         :message)))
-
-(defn t
-  ([e] (t {} e))
-  ([st e]
-   (let [_ (annotate/reset-errors!)
-         annotated-exp (annotate-exp {:st st} e)
-         _ (when-not (empty? @annotate/errors) (throw (ex-info "annotate error" {:error @annotate/errors})))]
-     (-> annotated-exp
-         annotated-type
-         normalize
-         renumber
-         unwrap-singleton))))
-
-(defn t-error-list [symbol-table exp]
-  (let [annotated-exp (annotate-exp symbol-table exp)]
-    {:errors @annotate/errors :annotated-exp annotated-exp}))
-
-(defn t-error
-  ([e] (t-error {} e))
-  ([st e]
-   (let [_ (annotate/reset-errors!)
-         {:keys [errors]} (t-error-list st e)]
-     (when (empty? errors) (throw (ex-info "no error" {})))
-     (-> errors
-         first!
-         :message))))
-
-(defn pt
-  ([s] (pt {} s))
-  ([st s] (t st (-> s parse-exp))))
-
-(defn pe
-  ([s] (pe {} s))
-  ([st s] (t-error st (-> s parse-exp))))
 
 (deftest type-test
   (is (= :type-not-found (at-error "NoSuchType")))
   (is (= :type-arity-mismatch (at-error "java::util::List")))
   (is (= :type-arity-mismatch (at-error "java::util::List java::lang::Number java::lang::String")))
   (is (= :tuple-cannot-have-arity-one (at-error "Tuple java::lang::Long")))
+  (is (= :type-not-found (at-error "java::util::List NoSuch"))) ; make sure we get a List Object here
 
   (is (= Long (at "java::lang::Long")))
   (is (= [java.util.List [Long]] (at "java::util::List java::lang::Long")))
   (is (= [java.util.Map [Number] [String]] (at "java::util::Map java::lang::Number java::lang::String"))))
+
+(defn pt
+  ([s] (pt {} s))
+  ([st s]
+   (let [[errors annotated-exp] (run-errors #(annotate-exp {:st st} (parse-exp s)))]
+     (when-not (empty? errors) (throw (ex-info "annotate error" {:error @annotate/errors})))
+     (-> annotated-exp
+         annotated-type
+         normalize
+         renumber
+         unwrap-singleton))))
+
+(defn pe
+  ([s] (pe {} s))
+  ([st s]
+   (let [[errors _] (run-errors #(annotate-exp {:st st} (parse-exp s)))]
+     (when (empty? errors) (throw (ex-info "no error" {})))
+     (-> errors
+         first!
+         :message))))
 
 (deftest parse-annotated-exp-test
   (testing "constant"
@@ -259,11 +248,6 @@
 
     (is (= Boolean (pt "true && false")))
     (is (= Boolean (pt "true || false")))))
-
-(defn run-errors [f]
-  (let [_ (annotate/reset-errors!)
-        v (f)]
-    [@annotate/errors v]))
 
 (defn atlds [s]
   (let [[errors v] (run-errors #(annotate-top-level-decls {} (antlr/parse-top-level s)))]
