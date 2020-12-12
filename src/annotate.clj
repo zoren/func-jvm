@@ -460,7 +460,6 @@
         (fn [c [v t]] (assoc-variable c v {:t t}))
         context
         pat-vars)
-       #_{:st (into {} (map (fn [[variable value]] [variable value]) symbol-table1))}
        [:val-decl annotated-pattern annotated-exp]])
 
     :type-decl
