@@ -27,18 +27,14 @@
     [@errors-atom v]))
 
 (defn at [s]
-  (let [[errors v] (run-errors #(annotate-type (parse-type s)))]
+  (let [[errors v] (run-errors #(-> s parse-type annotate-type))]
     (when-not (empty? errors) (throw (ex-info "errors" {:errors errors})))
     (-> v annotated-type unwrap-singleton)))
 
-(defn at-error [t]
-  (let [[errors _] (run-errors #(-> t
-                                    parse-type
-                                    annotate-type))]
+(defn at-error [s]
+  (let [[errors _] (run-errors #(-> s parse-type annotate-type))]
     (when (empty? errors) (throw (ex-info "no error" {})))
-    (-> errors
-        first!
-        :message)))
+    (-> errors first! :message)))
 
 (deftest type-test
   (is (= :type-not-found (at-error "NoSuchType")))
@@ -67,9 +63,7 @@
   ([st s]
    (let [[errors _] (run-errors #(annotate-exp {:st st} (parse-exp s)))]
      (when (empty? errors) (throw (ex-info "no error" {})))
-     (-> errors
-         first!
-         :message))))
+     (-> errors first! :message))))
 
 (deftest parse-annotated-exp-test
   (testing "constant"
