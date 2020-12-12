@@ -450,16 +450,42 @@
 
     (throw (ex-info "annotate-exp: unknown exp type" {:kind kind :exp exp}))))
 
-(defn annotate-top-level-decl [symbol-table [kind & args]]
+(defn annotate-top-level-decl [context [kind & args]]
   (case kind
     :val-decl
     (let [[pattern exp] args
-          [symbol-table1 annotated-pattern] (annotate-pattern symbol-table pattern)
-          annotated-exp (annotate-exp symbol-table1 exp)]
+          [pat-vars annotated-pattern] (annotate-pattern context pattern)
+          annotated-exp (annotate-exp context exp)]
       (unify-message (annotated-type annotated-exp) (annotated-type annotated-pattern) :val-definitions-differ)
-      [symbol-table1 [:val-decl annotated-pattern annotated-exp]])))
+      [(reduce
+        (fn [c [v t]] (assoc-variable c v {:t t}))
+        context
+        pat-vars)
+       #_{:st (into {} (map (fn [[variable value]] [variable value]) symbol-table1))}
+       [:val-decl annotated-pattern annotated-exp]])
 
-(defn annotate-top-level-decls [symbol-table tlds]
-  (reduce (fn [[st tlds] tld]
-            (let [[st1 annotated-tld] (annotate-top-level-decls st tld)]
-              [st1 (conj tlds annotated-tld)])) [symbol-table []] tlds))
+    :type-decl
+    (let [[type-name params kind & kind-args] args
+          t-kind
+          (case kind
+            :union
+            (map (fn [[ctor-name & ctor-param-type]]
+                   (into [ctor-name]
+                         (map annotate-type ctor-param-type)
+
+                         )
+
+                   ) kind-args)
+            )
+          ]
+      [{} [:type-decl type-name params kind t-kind]])
+
+    (throw (ex-info "annotate-top-level-decl: unknown type" {:kind kind}))))
+
+(defn annotate-top-level-decls [context tlds]
+  (reduce
+   (fn [[ctx tlds] tld]
+     (let [[ctx1 annotated-tld] (annotate-top-level-decl ctx tld)]
+       [ctx1 (conj tlds annotated-tld)]))
+   [context []]
+   tlds))

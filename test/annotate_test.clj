@@ -1,7 +1,7 @@
 (ns annotate-test
   (:require
    [clojure.test :refer [deftest is testing]]
-   [annotate :refer [annotate-exp annotated-type annotate-type]]
+   [annotate :refer [annotate-exp annotated-type annotate-type annotate-top-level-decls]]
    [unify :refer [normalize renumber]]
    [antlr :refer [parse-exp parse-type]]
    )
@@ -258,7 +258,30 @@
     (is (= :logical-operator-on-non-boolean (pe "\"abc\" && \"d\"")))
 
     (is (= Boolean (pt "true && false")))
-    (is (= Boolean (pt "true || false")))
-    )
+    (is (= Boolean (pt "true || false")))))
+
+(defn run-errors [f]
+  (let [_ (annotate/reset-errors!)
+        v (f)]
+    [@annotate/errors v]))
+
+(defn atlds [s]
+  (let [[errors v] (run-errors #(annotate-top-level-decls {} (antlr/parse-top-level s)))]
+    (when-not (empty? errors) (throw (ex-info "errors" {:errors errors})))
+    v))
+
+(defn atlds-errs [s]
+  (let [[errors _v] (run-errors #(annotate-top-level-decls {} (antlr/parse-top-level s)))]
+    (when (empty? errors) (throw (ex-info "no errors" {})))
+    errors))
+
+(defn atld-err [s] (-> s atlds-errs first! :message))
+
+(deftest toplevel
+  (is (= :variable-not-found (atld-err "val _ = x")))
+  (is (= :variable-not-found (atld-err "val _ = x val x = 5")))
+
+  (atlds "val x = 5")
+  (atlds "val x = 5 val y = x")
   )
 

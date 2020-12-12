@@ -8,19 +8,20 @@ pattern_eof : pattern EOF;
 expression_eof : expression EOF;
 type_eof : type EOF;
 
+type_params : IDENTIFIER*;
 top_level_decl
-    : val_decl
-    | 'type' IDENTIFIER type_kind
+    : 'val' pattern '=' expression # top_level_val_decl
+    | 'type' IDENTIFIER type_params type_kind # type_decl
 ;
 
 val_decl : 'val' pattern '=' expression;
 val_decls : val_decl+;
 
 type_decl_field : IDENTIFIER ':' type;
-
+union_constructor : '|' IDENTIFIER type_atom*;
 type_kind
-    : '|' IDENTIFIER type*
-    | (':' qualified_name)? '{' (type_decl_field (',' type_decl_field)*)? '}'
+    : union_constructor+ # union_type_kind
+    | (':' qualified_name)? '{' (type_decl_field (',' type_decl_field)*)? '}' # record_type_kind
 ;
 
 integer : INTEGER;

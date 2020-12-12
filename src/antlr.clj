@@ -144,22 +144,38 @@
 
     (throw (ex-info "convert-exp: unknown exp type" {:kind kind :args args :c (count input)}))))
 
-(defn convert-tld [[_ [kind & args :as input]]]
+(defn convert-tld [[kind & args :as input]]
   (case kind
-    :val_decl
+    :top_level_val_decl
     (let [[_val pat _eq exp] args]
-      (with-meta [:val-decl (convert-pattern pat) (convert-exp exp)] (meta input)))))
+      (with-meta [:val-decl (convert-pattern pat) (convert-exp exp)] (meta input)))
+
+    :type_decl
+    (let [[_type type-name [_ & type-params] [type-decl-kind & type-kind]] args]
+      (into
+       [:type-decl type-name type-params]
+       (case type-decl-kind
+         :union_type_kind
+         (into [:union]
+               (map (fn [[_ _pipe ctor-name & ctor-param-types]]
+                      (into [ctor-name] (map convert-type ctor-param-types))
+                      ) type-kind))))
+
+      )
+
+    (throw (ex-info "convert-tld: unknown type" {:kind kind :args args :c (count input)}))))
 
 (defn make-parser [options] (a/parser "lang.g4" (merge {:use-alternates? true} options)))
 
-(def antlr-parse-type (make-parser {:root "type_eof"}))
-(defn parse-type [s] (-> s antlr-parse-type second convert-type))
+(def parse-type-raw (make-parser {:root "type_eof"}))
+(defn parse-type [s] (-> s parse-type-raw second convert-type))
 
-(def antlr-parse-pattern (make-parser {:root "pattern_eof"}))
-(defn parse-pattern [s] (-> s antlr-parse-pattern second convert-pattern))
+(def parse-pattern-raw (make-parser {:root "pattern_eof"}))
+(defn parse-pattern [s] (-> s parse-pattern-raw second convert-pattern))
 
-(def antlr-parse-exp (make-parser {:root "expression_eof"}))
-(defn parse-exp [s] (-> s antlr-parse-exp second convert-exp))
+(def parse-exp-raw (make-parser {:root "expression_eof"}))
+(defn parse-exp [s] (-> s parse-exp-raw second convert-exp))
 
-(def top-level-parser (make-parser {:root "source_text"}))
-(defn parse-top-level [s] (map convert-tld (-> s top-level-parser butlast rest)))
+(def parse-top-level-raw (make-parser {:root "source_text"}))
+(defn parse-top-level [s] (map convert-tld (-> s parse-top-level-raw butlast rest)))
+
