@@ -13,19 +13,8 @@
   (when-not (= (count s) 1) (throw (ex-info "expected one element" {:found s})))
   (first s))
 
-(defn mk-error-lister []
-  (let [errors-atom (atom [])]
-    {:errors-atom errors-atom :error (fn error
-                                       ([message] (error message {}))
-                                       ([message args] (swap! errors-atom conj (assoc args :message message))
-                                        nil))}))
-
-(defn throw-error
-  ([m] (throw-error m {}))
-  ([m a] (throw (ex-info (name m) a))))
-
 (defn unwrap-singleton [s]
-  (if (and (vector? s) (= (count s) 1))
+  (if (and (coll? s) (= (count s) 1))
     (first s)
     s))
 
@@ -40,8 +29,7 @@
         _ (-> t
               parse-type
               annotate-type)
-        errors @annotate/errors
-        ]
+        errors @annotate/errors]
     (when (empty? errors) (throw (ex-info "no error" {})))
     (-> errors
         first!
