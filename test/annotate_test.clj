@@ -20,8 +20,10 @@
 
 (defn run-errors [f]
   (let [errors-atom (atom [])
-        _ (annotate/set-error-reporter (fn [message] (swap! errors-atom conj message)))
-        v (f)]
+        v (binding
+              [annotate/*report-error
+               (fn [message] (swap! errors-atom conj message))]
+            (f))]
     [@errors-atom v]))
 
 (defn at [s]

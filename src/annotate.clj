@@ -123,10 +123,7 @@
                                                          [(wrap-primitive-types t)]
                                                          (wrap-primitive-types t))} additionals))))
 
-(def *report-error (fn [_]))
-
-(defn set-error-reporter [reporter]
-  (def *report-error reporter))
+(def ^:dynamic *report-error (fn [_]))
 
 (defn error
   ([msg] (error msg {}))
