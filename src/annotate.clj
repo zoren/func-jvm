@@ -266,7 +266,7 @@
           (or (get-variable context variable-name)
               (do
                 (error :variable-not-found {:variable-name variable-name})
-                Object))
+                {:t Object}))
           spec-t (specialize (get-level context) (or tvars []) t)]
       (with-type exp spec-t))
 
