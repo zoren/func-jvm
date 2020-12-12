@@ -160,7 +160,7 @@
 (defn unify-message [t1 t2 message]
   (try
     (unify t1 t2)
-    nil
+    :unified
     (catch clojure.lang.ExceptionInfo _e
       (error message {:t1 t1 :t2 t2}))))
 
@@ -415,25 +415,25 @@
     :binary-operator
     (let [[operator e1 e2] args
           [ae1 ae2] (map (partial annotate-exp context) [e1 e2])
-          _ (unify-message (annotated-type ae1) (annotated-type ae2) :operand-types-differ)
+          unified-operands (unify-message (annotated-type ae1) (annotated-type ae2) :operand-types-differ)
           operator-t (normalize (annotated-type ae1))
           result-type
           (cond
             (#{:+ :- :* :/} operator)
             (do
-              (when-not (#{Long BigDecimal} (first operator-t))
+              (when (and unified-operands (not (#{Long BigDecimal} (first operator-t))))
                 (error :no-overload-found {:operand-type operator-t}))
               operator-t)
 
             (#{:<= :>= :< :> :=} operator)
             (do
-              (when-not (#{Long BigDecimal #_ java.time.Instant} (first operator-t))
+              (when (and unified-operands (not (#{Long BigDecimal #_ java.time.Instant} (first operator-t))))
                 (error :comparison-does-not-apply {:operand-type operator-t}))
               [Boolean])
 
             (#{:&& :||} operator)
             (do
-              (when-not (= Boolean (first operator-t))
+              (when (and unified-operands (not (= Boolean (first operator-t))))
                 (error :logical-operator-on-non-boolean {:operand-type operator-t}))
               [Boolean])
 

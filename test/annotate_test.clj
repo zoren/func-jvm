@@ -240,17 +240,23 @@
     )
 
   (testing "arithmetic operator"
+    (is (= :operand-types-differ (pe "true + 2")))
+    (is (= :operand-types-differ (pe "1.0 + 2")))
+    (is (= :operand-types-differ (pe "5 + 6.0")))
+    (is (= :operand-types-differ (pe "3 + \"d\"")))
     (is (= :no-overload-found (pe "\"abc\" + \"d\"")))
+    (is (= :no-overload-found (pe "true + false")))
 
     (is (= Long (pt "5 + 6")))
     (is (= BigDecimal (pt "5.0 + 6.0")))
-    #_(is (= BigDecimal (pt "5 + 6.0")))
     (is (= BigDecimal (pt "5.0 - 6.0")))
     (is (= BigDecimal (pt "5.0 * 6.0")))
     (is (= BigDecimal (pt "5.0 / 6.0")))
     )
 
   (testing "comparison operator"
+    (is (= :operand-types-differ (pe "true < 1")))
+    (is (= :operand-types-differ (pe "1 < 1.0")))
     (is (= :comparison-does-not-apply (pe "\"abc\" <= \"d\"")))
 
     (is (= Boolean (pt "5 < 6")))
@@ -259,6 +265,8 @@
     )
 
   (testing "logic operator"
+    (is (= :operand-types-differ (pe "true && 1")))
+    (is (= :operand-types-differ (pe "1 && 1.0")))
     (is (= :logical-operator-on-non-boolean (pe "\"abc\" && \"d\"")))
 
     (is (= Boolean (pt "true && false")))
