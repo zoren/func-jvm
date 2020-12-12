@@ -161,8 +161,10 @@
   (try
     (unify t1 t2)
     :unified
-    (catch clojure.lang.ExceptionInfo _e
-      (error message {:t1 t1 :t2 t2}))))
+    (catch clojure.lang.ExceptionInfo e
+      (if-let [unify-error (:unify/error (ex-data e))]
+        (error message {:t1 t1 :t2 t2 :unify-error unify-error})
+        (throw e)))))
 
 (defn annotate-type [t]
   (when (or (not (vector? t)) (empty? t))

@@ -95,9 +95,11 @@
       (and (type? t1) (type? t2))
       (do
         (when-not (= (first t1) (first t2))
-          (throw (ex-info "types differ" {:t1 t1 :t2 t2})))
+          (throw (ex-info "types differ" {::error :types-differ
+                                          :t1 t1 :t2 t2})))
         (when-not (= (count t1) (count t2))
-          (throw (ex-info "type arity mismatch" {:t1 t1 :t2 t2})))
+          (throw (ex-info "type arity mismatch" {::error :types-arity-mismatch
+                                                 :t1 t1 :t2 t2})))
         (doseq [[ta1 ta2] (map vector (rest t1) (rest t2))]
           (unify ta1 ta2)))
 
