@@ -1,0 +1,5 @@
+type B
+  | F Int
+  | T Bool
+
+val n = not

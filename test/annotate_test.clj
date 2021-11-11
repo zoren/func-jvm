@@ -27,12 +27,12 @@
     [@errors-atom v]))
 
 (defn at [s]
-  (let [[errors v] (run-errors #(-> s parse-type annotate-type))]
+  (let [[errors v] (run-errors #(->> s parse-type (annotate-type {})))]
     (when-not (empty? errors) (throw (ex-info "errors" {:errors errors})))
     (-> v annotated-type unwrap-singleton)))
 
 (defn at-error [s]
-  (let [[errors _] (run-errors #(-> s parse-type annotate-type))]
+  (let [[errors _] (run-errors #(->> s parse-type (annotate-type {})))]
     (when (empty? errors) (throw (ex-info "no error" {})))
     (-> errors first! :message)))
 
@@ -261,8 +261,32 @@
 (deftest toplevel
   (is (= :variable-not-found (atld-err "val _ = x")))
   (is (= :variable-not-found (atld-err "val _ = x val x = 5")))
+  (is (= :val-definitions-differ (atld-err "val 3 = true")))
+  (is (= :type-already-declared (atld-err "type Tuple | C")))
+  (is (= :type-parameter-already-declared (atld-err "type T a a | C")))
+  (is (= :constructor-redeclared (atld-err "val C = 5 type T | C")))
+  (is (= :id-already-bound (atld-err "type T | C val C = 5 ")))
+  (is (= :constructor-redeclared (atld-err "type T | C | C")))
+  (is (= :type-arity-mismatch (atld-err "type T a | C T")))
+  (is (= :argument-type-no-match (atld-err "type MaybeLong | None | Some java::lang::Long val s = Some true")))
 
   (atlds "val x = 5")
   (atlds "val x = 5 val y = x")
-  )
+  (atlds "val V = 5 val y = V") ; we can use upper-case vars too
+  (atlds "type T | c val X = c") ; and lower-case ctors
+  (atlds "type myType | c val X = c") ; and lower-case types
 
+  (atlds "type Unit | Unit")
+  #_(atlds "type Unit | Unit val f = \\x:Unit -> x")
+  (atlds "type YesOrNo | Yes | No val y = Yes")
+  (atlds "type MaybeLong | None | Some java::lang::Long")
+  (atlds "type MaybeLong | None | Some java::lang::Long val n = None val s = Some 4")
+  (atlds "type TwoParams | C java::lang::Long java::math::BigDecimal val ll = C 2 4.3")
+  (atlds "type LongList | Nil | Cons java::lang::Long LongList val ll = Nil val ll2 = Cons 3 ll")
+  (atlds "type MaybeLong | None | Some java::lang::Long val s = Some 4")
+
+  (atlds "type Phantom a b | C val c = C")
+  (atlds "type Maybe a | None | Some a")
+  (atlds "type List a | Nil | Cons a (List a)")
+
+  )

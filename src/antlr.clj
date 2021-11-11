@@ -24,7 +24,7 @@
            \- (java.time.Duration/parse content)
            (java.time.Instant/parse content)))
     :lang_float (BigDecimal. (second s))
-    :integer (Long/parseLong (second s)) ; todo give gracefull error message
+    :integer (Long/parseLong (second s)) ; todo give graceful error message
     (case s
       "true" Boolean/TRUE
       "false" Boolean/FALSE

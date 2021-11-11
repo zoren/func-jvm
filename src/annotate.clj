@@ -141,6 +141,20 @@
             1 (first type-filtered-methods)
             (error :ambiguous-method-signature {:method-candidates arity-methods})))))))
 
+(defn get-variable [context variable-name]
+  (get-in context [:st variable-name]))
+
+(defn assoc-variable [context variable-name t]
+  (assoc-in context [:st variable-name] t))
+
+(defn get-type [context name]
+  (get-in context [:types name]))
+
+(defn assoc-type [context name t]
+  (assoc-in context [:types name] t))
+
+(defn get-level [context] (:level context 0))
+
 (defn unify-message [t1 t2 message]
   (try
     (unify t1 t2)
@@ -150,25 +164,33 @@
         (error message {:t1 t1 :t2 t2 :unify-error unify-error})
         (throw e)))))
 
-(defn annotate-type [t]
+(defn annotate-type [context t]
   (when (or (not (vector? t)) (empty? t))
     (throw (ex-info "annotate-type: unknown type format" {:type t})))
   (let [[qname & args] t
+        n (if (= (count qname) 1) (first qname) qname)
         type
-        (if (= qname ["Tuple"])
+        (if
+          (= qname ["Tuple"])
           (do
             (when (= (count args) 1)
               (error :tuple-cannot-have-arity-one {:args args}))
             :tuple)
 
-          (let [type-name (clojure.string/join "." qname)
-                class-obj (try-get-class type-name)
-                _ (if class-obj
-                    (when-not (= (count (.getTypeParameters class-obj)) (count args))
-                      (error :type-arity-mismatch {:params (.getTypeParameters class-obj) :args args}))
-                    (error :type-not-found {:name type-name}))]
-            class-obj))
-        annotated-args (map annotate-type args)]
+          (if-let [{:keys [params]} (get-type context n)]
+            (do
+              (when-not (= (count params) (count args))
+                (error :type-arity-mismatch {:params params :args args}))
+              (keyword n))
+            (let [type-name (clojure.string/join "." qname)
+                  class-obj (try-get-class type-name)
+                  _ (if class-obj
+                      (let [type-params (.getTypeParameters class-obj)]
+                        (when-not (= (count type-params) (count args))
+                          (error :type-arity-mismatch {:params type-params :args args})))
+                      (error :type-not-found {:name type-name}))]
+              class-obj)))
+        annotated-args (map (partial annotate-type context) args)]
 
     (with-type (into [qname] annotated-args) (into [type] (map annotated-type annotated-args)))))
 
@@ -181,14 +203,6 @@
       (error :upcast-invalid {:inferred-type inferred-type :upcast-type syntactic-type}))
     (doseq [[type-arg inferred-type-arg] (map vector syntactic-type-args inferred-type-args)]
       (ass type-arg inferred-type-arg))))
-
-(defn get-variable [context variable-name]
-  (get-in context [:st variable-name]))
-
-(defn assoc-variable [context variable-name t]
-  (assoc-in context [:st variable-name] t))
-
-(defn get-level [context] (:level context 0))
 
 (defn annotate-pattern [context [kind & args]]
   (case kind
@@ -205,7 +219,7 @@
     :type-annotation
     (let [[pat type] args
           [pv annotated-pattern] (annotate-pattern context pat)
-          a-type (annotate-type type)
+          a-type (annotate-type context type)
           t (annotated-type a-type)]
       (unify-message t (annotated-type annotated-pattern) :type-does-not-match-annotation)
       [pv (with-type annotated-pattern t)])
@@ -257,7 +271,7 @@
     :upcast
     (let [[exp t] args
           annotated-exp (annotate-exp context exp)
-          ann-type (annotate-type t)
+          ann-type (annotate-type context t)
           syntactic-type (annotated-type ann-type)
           inferred-type (normalize (annotated-type annotated-exp))]
       (when (and syntactic-type inferred-type)
@@ -290,7 +304,8 @@
               target-class (-> annotated-target annotated-type normalize first)
               field (get-field target-class field-name)
               t (when field (java-generic-type->type (.getGenericType field)))]
-          (with-type [(if class-obj :get-static-field :get-instance-field) annotated-target field-name] t {:field field}))
+          (with-type [(if class-obj :get-static-field :get-instance-field) annotated-target field-name] t
+            {:field field}))
 
         (let [annotated-target (annotate-exp context target)
               t (annotated-type annotated-target)
@@ -324,13 +339,15 @@
       (case (first func)
         :variable
         (let [[_ qname] func]
-          (if (get-variable context qname)
+          (cond
+            (get-variable context qname)
             (let [[annotated-func annotated-arg] (map (partial annotate-exp context) [func arg])
                   t-res (mk-type-var 0)]
               (unify-message [java.util.function.Function (annotated-type annotated-arg) t-res]
                              (annotated-type annotated-func) :argument-type-no-match)
               (with-type [kind annotated-func annotated-arg] t-res))
 
+            :else
             (let [class-name (clojure.string/join "." qname)
                   class-obj (try-get-class class-name)
                   _ (when-not class-obj (error :class-not-found {:name class-name :qname qname}))
@@ -365,7 +382,8 @@
               ;; todo handle when not a class!
               (doseq [[pt a-arg] (map vector param-types annotated-args)]
                 (unify-message (wrap-primitive-types pt) (annotated-type a-arg) :argument-type-no-match))
-              (with-type (into [:invoke-static-method class-name method-name] annotated-args) return-type {:method method}))
+              (with-type (into [:invoke-static-method class-name method-name] annotated-args) return-type
+                {:method method}))
 
             (let [target (second func)
                   method-name (last func)
@@ -381,7 +399,8 @@
                     [arg-types Object])]
               (doseq [[pt a-arg] (map vector param-types annotated-args)]
                 (unify-message (wrap-primitive-types pt) (annotated-type a-arg) :argument-type-no-match))
-              (with-type (into [:invoke-instance-method annotated-instance method-name] annotated-args) return-type {:method method}))))
+              (with-type (into [:invoke-instance-method annotated-instance method-name] annotated-args) return-type
+                {:method method}))))
 
         ;; assume it's a function
         (let [[annotated-func annotated-arg] (map (partial annotate-exp context) [func arg])
@@ -434,13 +453,17 @@
 
     (throw (ex-info "annotate-exp: unknown exp type" {:kind kind :exp exp}))))
 
+(defn make-curried [param-types result]
+  (reduce (fn [acc-t pt] [java.util.function.Function pt acc-t]) result param-types))
+
 (defn annotate-top-level-decl [context [kind & args]]
   (case kind
     :val-decl
     (let [[pattern exp] args
           [pat-vars annotated-pattern] (annotate-pattern context pattern)
           annotated-exp (annotate-exp context exp)]
-      (unify-message (annotated-type annotated-exp) (annotated-type annotated-pattern) :val-definitions-differ)
+      (unify-message (annotated-type annotated-exp)
+                     (annotated-type annotated-pattern) :val-definitions-differ)
       [(reduce
         (fn [c [v t]] (assoc-variable c v {:t t}))
         context
@@ -449,19 +472,38 @@
 
     :type-decl
     (let [[type-name params kind & kind-args] args
-          t-kind
+          _ (when (= type-name "Tuple") (error :type-already-declared))
+          _ (reduce (fn [acc type-param]
+                      (when (acc type-param) (error :type-parameter-already-declared))
+                      (conj acc type-param))
+                    #{}
+                    params)
+          [annotated-kind-decl context1]
           (case kind
             :union
-            (map (fn [[ctor-name & ctor-param-type]]
-                   (into [ctor-name]
-                         (map annotate-type ctor-param-type)
-
-                         )
-
-                   ) kind-args)
+            (let [context-rec
+                  (assoc-type context type-name {:params params})
+                  annontated-ctors
+                  (mapv (fn [[ctor-name & ctor-param-types]]
+                          (into [ctor-name]
+                                (map (partial annotate-type context-rec) ctor-param-types))) kind-args)
+                  context1
+                  (reduce
+                   (fn [ctx [ctor-name & param-types]]
+                     (when (get-variable ctx ctor-name) (error :constructor-redeclared))
+                     (assoc-variable
+                      ctx ctor-name
+                      {:t (reduce (fn [acc-t pt] [java.util.function.Function (annotated-type pt) acc-t])
+                                  (into [(keyword type-name)] param-types)
+                                  (reverse param-types))}))
+                   context
+                   annontated-ctors)
+                  _ (def *ctx context1)
+                  ]
+              [annontated-ctors context1])
             )
           ]
-      [{} [:type-decl type-name params kind t-kind]])
+      [context1 [:type-decl type-name params kind annotated-kind-decl]])
 
     (throw (ex-info "annotate-top-level-decl: unknown type" {:kind kind}))))
 

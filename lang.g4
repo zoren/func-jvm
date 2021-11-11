@@ -51,7 +51,7 @@ pattern
     | IDENTIFIER # pattern_identifier
     | pattern ':' type # type_annotation_pattern
     | constant # constant_pattern
-//    | qualified_name pattern*
+    | qualified_name pattern* # union_constructor_pattern
     | '(' (pattern (',' pattern)*)? ')' # tuple_or_paren_pattern
 ;
 
